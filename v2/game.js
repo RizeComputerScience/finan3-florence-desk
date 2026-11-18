@@ -69,7 +69,7 @@
   const CREDITS = [
     ['A counting house (three details and the title plate)', 'Cocharelli treatise on the vices, Genoa, 14th century, British Library Add MS 27695, f. 8', 'CC0, released by the British Library', 'https://commons.wikimedia.org/wiki/File:Counting_house_scenes_-_Treatise_on_the_Vices_(late_14th_C),_f.8_-_BL_Add_MS_27695.jpg'],
     ['Effects of Good Government in the Countryside (detail)', 'Ambrogio Lorenzetti, Palazzo Pubblico, Siena, 1338 to 1339', 'Public domain', 'https://commons.wikimedia.org/wiki/File:Ambrogio_Lorenzetti_-_Effects_of_Good_Government_in_the_countryside_-_Google_Art_Project.jpg'],
-    ['Effects of Good Government in the City (two details)', 'Ambrogio Lorenzetti, Palazzo Pubblico, Siena, 1338 to 1339', 'Public domain', 'https://commons.wikimedia.org/wiki/File:Ambrogio_Lorenzetti_-_Effects_of_Good_Government_in_the_city_-_Google_Art_Project.jpg'],
+    ['Effects of Good Government in the City (three details, one behind the street)', 'Ambrogio Lorenzetti, Palazzo Pubblico, Siena, 1338 to 1339', 'Public domain', 'https://commons.wikimedia.org/wiki/File:Ambrogio_Lorenzetti_-_Effects_of_Good_Government_in_the_city_-_Google_Art_Project.jpg'],
     ['Effects of Bad Government in the City (two details)', 'Ambrogio Lorenzetti, Palazzo Pubblico, Siena, 1338 to 1339', 'Public domain', 'https://commons.wikimedia.org/wiki/File:Ambrogio_Lorenzetti_-_Bad_Government_and_the_Effects_of_Bad_Government_on_the_City_Life_-_WGA13499.jpg'],
     ['Coastlines, lakes and rivers on the chart in turn 1', 'Natural Earth, 1:50m physical data, drawn in the manner of Angelino Dulcert’s sea chart of 1339', 'Public domain', 'https://www.naturalearthdata.com/'],
     ['Gold florin of Florence, 1323 (the coins on the table)', 'Photograph by Sailko, Teylers Museum', 'CC BY 3.0', 'https://commons.wikimedia.org/wiki/File:Firenze,_fiorino_d%27oro,_1323.jpg'],
@@ -174,8 +174,11 @@
   }
 
   // ---------------- the turn screen: leaf + stage + ledger ----------------
-  let STAGE = null;   // { svg, W, H, mode, places, layer... }
-  const gameChoices = () => (S.practice ? Object.assign({}, S.pchoices) : choices());
+  let STAGE = null, STAGE_SKY = null;   // { svg, W, H, mode, places, layer... }
+  // This play's year of Florence: how hard the run hits, what rival benches charge, how the exchange moves. Seeded by the
+  // desk code (a replay gets its own), so a reload tells the same story and two friends get different ones.
+  const yearFor = () => C.yearFrom(h.mulberry32(h.fnv1a(S.code + '|florence-year' + (S.practice ? '|P' + S.practice : ''))));
+  const gameChoices = () => { const c = S.practice ? Object.assign({}, S.pchoices) : choices(); c._year = yearFor(); const r = S.practice ? S.prate : (S.log.t4 && S.log.t4.rate); if (r != null) c.rate = r; return c; };
   function showTurn(id) {
     const k = IDS.indexOf(id), ch = gameChoices(), sim = C.simulate(ch);
     if (sim.done < k) {   // an earlier turn is still open
@@ -197,7 +200,7 @@
         <div class="stage" id="stage"></div>
         <div class="commit" id="commit"><div class="gauge" id="gauge" hidden></div><span class="what" id="what"></span><span class="actions" style="margin:0" id="commitBtns"></span></div>
       </div>
-      <section class="ledger" id="ledger" aria-label="Your ledger"></section></section>`;
+      <details class="ledger" id="ledger"${window.innerWidth >= 861 ? ' open' : ''}></details></section>`;
     focusHead();
     $('#stage').addEventListener('click', () => { if (!$('#commitBtns button')) hurry = true; });
     const before = sim.states[k];
@@ -234,7 +237,8 @@
     const rows = C.ledgerRows(st, prev, Math.max(k, 0));
     const box = $('#ledger'); if (!box) return;
     const old = ledgerPrev || {};
-    box.innerHTML = `<h3>Ledger <span>${esc(caption)}</span></h3><table><caption class="sr-only">Your ledger, in florins: ${esc(caption)}</caption><tbody>${rows.map((r) => {
+    const wRow = rows.find((r) => r.key === 'W');
+    box.innerHTML = `<summary><h3>Ledger <span>${esc(caption)}${wRow ? ` · worth ${fl(wRow.now)}` : ''}</span></h3></summary><table><caption class="sr-only">Your ledger, in florins: ${esc(caption)}</caption><tbody>${rows.map((r) => {
       const changed = old[r.key] !== r.now;
       return `<tr class="${r.key === 'W' ? 'worth' : ''}${r.struck ? ' struck' : ''}" data-k="${r.key}"><th scope="row">${r.label}</th><td class="now"><span class="pen${changed ? ' writing' : ''}">${fl(r.now)}</span></td><td class="chg ${r.change > 0 ? 'up' : r.change < 0 ? 'down' : ''}">${r.change ? `<span class="pen writing">${r.change > 0 ? '+' : ''}${fl(r.change)}</span>` : ''}</td></tr>`;
     }).join('')}</tbody></table><p class="foot">Worth is everything the bank owns (coins and loans) minus everything it owes.</p>${st.failed ? '<p class="closed">Your bank has closed.</p>' : ''}`;
@@ -277,14 +281,22 @@
   }
   function buildTable(opts) {
     opts = opts || {};
-    const mode = stageMode(), G = opts.street ? shiftGeo(GEO[mode], opts.street) : GEO[mode], st = $('#stage');
+    const mode = stageMode(), G = shiftGeo(GEO[mode], opts.street != null ? opts.street : (mode === 'tall' ? 60 : 70)), st = $('#stage');
     st.innerHTML = '';
     const svg = E('svg', { viewBox: `0 0 ${G.W} ${G.H}`, role: 'img', 'aria-label': opts.label || 'Your counting table, seen from above.' }, st);
     defs(svg);
-    // street and shop front
-    E('rect', { x: 0, y: 0, width: G.W, height: G.street, fill: 'url(#cobbles)' }, svg);
-    E('rect', { x: 0, y: 0, width: G.W, height: G.street, fill: '#000', opacity: 0.18 }, svg);
-    E('rect', { x: 0, y: G.street - 4, width: G.W, height: 10, fill: '#3A2416' }, svg);
+    // the street in front of your bench, seen straight on: Lorenzetti's Siena behind, paving underfoot, the counter's edge
+    const sky = E('g', {}, svg);
+    E('rect', { x: 0, y: 0, width: G.W, height: G.street, fill: '#2C3A63' }, sky);
+    E('image', { href: 'img/lorenzetti-street.jpg', x: 0, y: 0, width: G.W, height: G.street - 30, preserveAspectRatio: 'xMidYMax slice' }, sky);
+    const sg = E('linearGradient', { id: 'streetShade', x1: 0, y1: 0, x2: 0, y2: 1 }, svg.querySelector('defs'));
+    E('stop', { offset: 0, 'stop-color': '#000', 'stop-opacity': 0.05 }, sg); E('stop', { offset: 0.7, 'stop-color': '#000', 'stop-opacity': 0.12 }, sg); E('stop', { offset: 1, 'stop-color': '#1A0F08', 'stop-opacity': 0.55 }, sg);
+    E('rect', { x: 0, y: 0, width: G.W, height: G.street - 30, fill: 'url(#streetShade)' }, sky);
+    E('rect', { x: 0, y: G.street - 34, width: G.W, height: 34, fill: '#9C8A6E' }, sky);
+    for (let x = -20; x < G.W; x += 46) E('path', { d: `M${x} ${G.street - 34}l-10 34`, stroke: '#7E6D55', 'stroke-width': 1.2 }, sky);
+    E('path', { d: `M0 ${G.street - 18}H${G.W}`, stroke: '#7E6D55', 'stroke-width': 1.2 }, sky);
+    E('rect', { x: 0, y: G.street - 6, width: G.W, height: 12, fill: '#4A2C18', stroke: '#24140A' }, sky);
+    STAGE_SKY = sky;
     // the table and its counting cloth
     E('rect', { x: 0, y: G.street + 6, width: G.W, height: G.H - G.street - 6, fill: 'url(#wood)' }, svg);
     const [cx, cy, cw, chh] = G.cloth;
@@ -369,21 +381,48 @@
   }
   function settle(name, amount) { fill(name, amount); }
 
-  // people on the street, seen from above: a hooded head and shoulders, no faces
+  // people in the street, standing, in the manner of the miniatures: long robes, hoods, caps, veils and hats; no faces drawn.
+  // (x, y) is where the feet are. kinds: 'hood', 'cap', 'veil', 'hat'. A depositor holds a claim for 200 florins.
   const ROBES = ['#A8301C', '#22408C', '#3D7563', '#B8862E', '#7A2E3A', '#8C8478', '#5B4A8A', '#C26A2E'];
-  function person(x, y, i, extra) {
-    const g = E('g', { class: 'person' }, STAGE.layers.people); const robe = ROBES[i % ROBES.length], hood = ROBES[(i + 3) % ROBES.length];
-    const body = E('g', { transform: `scale(${STAGE.personScale || 1})` }, g);
-    E('ellipse', { cx: 3, cy: 5, rx: 24, ry: 15, fill: '#000', opacity: 0.32 }, body);
-    E('path', { d: 'M-21 2c0-9 9-15 21-15s21 6 21 15c0 7-9 12-21 12s-21-5-21-12z', fill: robe, stroke: '#2A1C14', 'stroke-width': 1.6 }, body);
-    E('path', { d: 'M-14 6c4 3 24 3 28 0', fill: 'none', stroke: '#2A1C14', 'stroke-width': 1, opacity: 0.5 }, body);
-    E('circle', { cx: 0, cy: -3, r: 10, fill: hood, stroke: '#2A1C14', 'stroke-width': 1.6 }, body);
-    E('path', { d: 'M-6-9c3-3 9-3 12 0', fill: 'none', stroke: '#2A1C14', 'stroke-width': 1, opacity: 0.45 }, body);
-    if (extra === 'chit') { E('path', { d: 'M-15 8l6 9M15 8l-6 9', stroke: robe, 'stroke-width': 5, 'stroke-linecap': 'round' }, body); E('rect', { x: -12, y: 13, width: 24, height: 14, rx: 1, fill: '#EDE0C4', stroke: '#2A1C14', 'stroke-width': 1.1 }, body); const t = E('text', { x: 0, y: 24, 'text-anchor': 'middle', 'font-size': 11, 'font-family': 'Alegreya, serif', fill: '#2A1C14', 'font-weight': 700 }, body); t.textContent = '200'; }
-    const p = { g, x, y, body }; move(p, x, y); return p;
+  const KINDS = ['hood', 'cap', 'veil', 'hat'];
+  const FLESH = ['#E6C29A', '#D9AE82', '#C99A6E', '#EBCDA8'];
+  function person(x, y, i, opts) {
+    opts = typeof opts === 'string' ? { hold: opts } : (opts || {});
+    const g = E('g', { class: 'person' }, STAGE.layers.people), robe = opts.robe || ROBES[i % ROBES.length], hoodC = ROBES[(i * 3 + 2) % ROBES.length];
+    const kind = opts.kind || KINDS[(i * 7 + 1) % KINDS.length], sc = opts.scale || STAGE.personScale || 1;
+    const body = E('g', {}, g), fig = E('g', {}, body);
+    E('ellipse', { cx: 0, cy: 0, rx: 17, ry: 4, fill: '#000', opacity: 0.3 }, fig);
+    const back = E('g', {}, fig);   // the far arm
+    E('path', { d: 'M-9 -56C-16 -46 -18 -38 -16 -30', fill: 'none', stroke: robe, 'stroke-width': 7, 'stroke-linecap': 'round' }, back);
+    E('path', { d: 'M-12 -60C-16 -40 -20 -16 -21 0L21 0C20 -16 16 -40 12 -60C8 -66 -8 -66 -12 -60Z', fill: robe, stroke: '#2A1C14', 'stroke-width': 1.5, 'stroke-linejoin': 'round' }, fig);
+    E('path', { d: 'M-15 -34H15', stroke: '#2A1C14', 'stroke-width': 1.2, opacity: 0.55 }, fig);
+    E('path', { d: 'M-21 0C-14 3 14 3 21 0', fill: 'none', stroke: '#2A1C14', 'stroke-width': 1.5 }, fig);
+    const arm = E('g', {}, fig);
+    const armDown = () => { arm.innerHTML = ''; E('path', { d: 'M9 -56C17 -48 20 -40 19 -32', fill: 'none', stroke: robe, 'stroke-width': 7.5, 'stroke-linecap': 'round' }, arm); E('circle', { cx: 19, cy: -30, r: 3.3, fill: FLESH[i % 4], stroke: '#2A1C14', 'stroke-width': 1 }, arm); };
+    armDown();
+    const head = E('g', {}, fig), skin = FLESH[i % 4];
+    if (kind === 'veil') { E('path', { d: 'M-13 -64C-14 -88 14 -88 13 -64L13 -54C6 -50 -6 -50 -13 -54Z', fill: '#F2EEE4', stroke: '#2A1C14', 'stroke-width': 1.3 }, head); E('circle', { cx: 0, cy: -71, r: 7.5, fill: skin, stroke: '#2A1C14', 'stroke-width': 1.1 }, head); }
+    else {
+      E('circle', { cx: 0, cy: -71, r: 9.5, fill: skin, stroke: '#2A1C14', 'stroke-width': 1.3 }, head);
+      if (kind === 'hood') { E('path', { d: 'M-12 -66C-15 -90 15 -90 12 -66L9 -64C9 -82 -9 -82 -9 -64Z', fill: hoodC, stroke: '#2A1C14', 'stroke-width': 1.3 }, head); E('path', { d: 'M10 -80C22 -76 25 -62 21 -52', fill: 'none', stroke: hoodC, 'stroke-width': 4, 'stroke-linecap': 'round' }, head); }
+      if (kind === 'cap') E('path', { d: 'M-11 -76C-12 -86 12 -86 11 -76C6 -78 -6 -78 -11 -76Z', fill: hoodC, stroke: '#2A1C14', 'stroke-width': 1.3 }, head);
+      if (kind === 'hat') { E('ellipse', { cx: 0, cy: -78, rx: 16, ry: 3.5, fill: hoodC, stroke: '#2A1C14', 'stroke-width': 1.2 }, head); E('path', { d: 'M-8 -78C-8 -90 8 -90 8 -78Z', fill: hoodC, stroke: '#2A1C14', 'stroke-width': 1.2 }, head); }
+    }
+    const hold = E('g', {}, fig);
+    const setHold = (what) => { hold.innerHTML = ''; if (what === 'chit') { E('rect', { x: 13, y: -43, width: 18, height: 12, rx: 1, fill: '#EDE0C4', stroke: '#2A1C14', 'stroke-width': 1 }, hold); const t = E('text', { x: 22, y: -34, 'text-anchor': 'middle', 'font-size': 8.5, 'font-family': 'Alegreya, serif', fill: '#2A1C14', 'font-weight': 700 }, hold); t.textContent = '200'; }
+      if (what === 'purse') { E('path', { d: 'M14 -36c-3 6 0 12 6 12s9-6 6-12z', fill: '#7A4A22', stroke: '#2A1C14', 'stroke-width': 1 }, hold); E('circle', { cx: 20, cy: -30, r: 2.2, fill: '#E9C66E' }, hold); }
+      if (what === 'letter') { E('rect', { x: 12, y: -44, width: 20, height: 14, fill: '#EDE0C4', stroke: '#2A1C14', 'stroke-width': 1 }, hold); E('circle', { cx: 22, cy: -35, r: 3, fill: '#A8301C' }, hold); } };
+    setHold(opts.hold);
+    const p = { g, body, fig, x, y, sc, face: 1, setHold,
+      angry() { arm.innerHTML = ''; E('path', { d: 'M9 -56C15 -66 17 -76 15 -88', fill: 'none', stroke: robe, 'stroke-width': 7.5, 'stroke-linecap': 'round' }, arm); E('circle', { cx: 15, cy: -90, r: 3.3, fill: skin, stroke: '#2A1C14', 'stroke-width': 1 }, arm); back.innerHTML = ''; E('path', { d: 'M-9 -56C-15 -66 -17 -76 -15 -88', fill: 'none', stroke: robe, 'stroke-width': 7, 'stroke-linecap': 'round' }, back); hold.innerHTML = ''; },
+      turn(dir) { this.face = dir; this.draw(); },
+      draw() { body.setAttribute('transform', `scale(${(this.face * this.sc).toFixed(3)} ${this.sc.toFixed(3)})`); } };
+    p.draw(); move(p, x, y); return p;
   }
-  function move(p, x, y, r) { p.x = x; p.y = y; p.g.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)})${r ? ` rotate(${r})` : ''}`); }
-  const walk = (p, x, y, ms) => { const x0 = p.x, y0 = p.y; return tween(ms, (t) => move(p, lerp(x0, x, t), lerp(y0, y, t) + Math.sin(t * Math.PI * 8) * 1.2), (x) => x); };
+  function move(p, x, y) { p.x = x; p.y = y; p.g.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)})`); p.g.__y = y; }
+  // walking: a small bob in step; people face the way they walk
+  const walk = (p, x, y, ms) => { const x0 = p.x, y0 = p.y; if (Math.abs(x - x0) > 4) p.turn(x < x0 ? -1 : 1); return tween(ms, (t) => { move(p, lerp(x0, x, t), lerp(y0, y, t)); p.fig.setAttribute('transform', `translate(0 ${(-Math.abs(Math.sin(t * Math.PI * 6)) * 3).toFixed(1)})`); }, (q) => q).then(() => { p.fig.removeAttribute('transform'); }); };
+  function depthSort() { const L = STAGE.layers.people; [...L.children].sort((a, b) => (a.__y || 0) - (b.__y || 0)).forEach((c) => L.appendChild(c)); }
 
   // the pull: drag gold from one place toward another; the amount snaps to the turn's options as you drag
   function pull(opts) {
@@ -553,10 +592,13 @@
     if (ctx.done) { const st = ctx.sim.states[2]; fill('vault', st.V); fill('merch', st.M); writeLedger(st, prev, 2, 'After this turn'); showOutcome('t2', 1, `<p>${C.consequence('t2', st, prev)}</p>`); return; }
     setWhat('Depositors are bringing you 4,000 florins.');
     // three depositors walk up and pour in 4,000 florins
-    const G = STAGE.G, ppl = [0, 1, 2].map((i) => person(-60 - i * 50, G.street * 0.55, i + 1));
-    await Promise.all(ppl.map((p, i) => walk(p, G.front[0] - 90 + i * 90, G.street * 0.55, 700)));
-    await Promise.all([0, 1, 2].map((i) => spawnInto(i < 2 ? 1300 : 1400, 'vault', [ppl[i].x, ppl[i].y + 20], { stagger: 22, ms: 380 })));
-    ppl.forEach((p, i) => walk(p, STAGE.W + 80 + i * 40, p.y, 1100));
+    // a shopkeeper, a wool worker and a nun from the convent bring their money
+    const G = STAGE.G, feet = G.street - 10, sc = STAGE.mode === 'tall' ? 1.05 : 1.15;
+    const ppl = [{ kind: 'cap', robe: '#B8862E' }, { kind: 'hood', robe: '#8C8478' }, { kind: 'veil', robe: '#2A1C14' }].map((o, i) => person(-60 - i * 60, feet, i + 1, Object.assign({ scale: sc, hold: 'purse' }, o)));
+    await Promise.all(ppl.map((p, i) => walk(p, G.front[0] - 110 + i * 110, feet, 900)));
+    ppl.forEach((p) => { p.turn(1); p.setHold(null); });
+    await Promise.all([0, 1, 2].map((i) => spawnInto(i < 2 ? 1300 : 1400, 'vault', [ppl[i].x + 20, ppl[i].y - 30], { stagger: 22, ms: 380 })));
+    ppl.forEach((p, i) => walk(p, STAGE.W + 80 + i * 40, p.y, 1300));
     const withDeposits = Object.assign({}, prev, { V: prev.V + 4000, O: 4000, M: 0 }); withDeposits.W = withDeposits.V + withDeposits.M + withDeposits.K - withDeposits.O;
     writeLedger(withDeposits, prev, 2, 'Deposits in');
     const options = C.lendOptions().map((o) => ({ amount: o.amount, short: o.amount ? `Lend ${fl(o.amount)}` : 'Lend none', text: o.amount ? fl(o.amount) : 'None' }));
@@ -579,11 +621,11 @@
     fill('vault', prev.V); fill('merch', prev.M);
     if (ctx.done) { const st = ctx.sim.states[3]; fill('vault', st.V); fill('king', st.K); writeLedger(st, prev, 3, 'After this turn'); showOutcome('t3', 2, `<p>${C.consequence('t3', st, prev)}</p>`); return; }
     // the envoy arrives with a sealed letter
-    const G = STAGE.G, env = person(-60, G.street * 0.55, 1); env.body.children[1].setAttribute('fill', '#22408C');
+    const G = STAGE.G, env = person(-60, G.street - 10, 1, { kind: 'hat', robe: '#22408C', hold: 'letter', scale: STAGE.mode === 'tall' ? 1.1 : 1.2 });
     const letter = E('g', {}, STAGE.layers.people); E('rect', { x: -26, y: -17, width: 52, height: 34, fill: '#EDE0C4', stroke: '#2A1C14', 'stroke-width': 2 }, letter); E('path', { d: 'M-26-17L0 3 26-17', fill: 'none', stroke: '#2A1C14', 'stroke-width': 1.6 }, letter); E('circle', { cx: 0, cy: 6, r: 8, fill: '#A8301C', stroke: '#6E1D10' }, letter);
     letter.setAttribute('opacity', 0);
-    await walk(env, G.front[0], G.street * 0.55, 1200);
-    letter.setAttribute('opacity', 1); await tween(500, (f) => letter.setAttribute('transform', `translate(${G.front[0]} ${lerp(G.street * 0.55, G.street + 40, f)})`));
+    await walk(env, G.front[0] - 40, G.street - 10, 1200); env.setHold(null);
+    letter.setAttribute('opacity', 1); await tween(500, (f) => letter.setAttribute('transform', `translate(${G.front[0]} ${lerp(G.street - 50, G.street + 40, f)})`));
     Sound.play('seal');
     const ko = C.kingOptions({ t1: ctx.ch.t1, t2: ctx.ch.t2 });
     const names = ['Nothing', 'A quarter', 'Half', 'Three quarters'];
@@ -602,7 +644,7 @@
         const half = st.ev.gifts / 2, rub = $('.rubric');
         for (let y = 0; y < 2; y++) {
           rub.textContent = `Florence, ${1340 + y} · the king’s gift`; setWhat(`The king’s gift for ${1340 + y}: <b>${flo(half)}</b>.`);
-          await wait(450); await spawnInto(half, 'vault', [G.front[0], 20], { stagger: 60, ms: 620 });
+          await wait(450); await spawnInto(half, 'vault', [G.front[0], G.street - 40], { stagger: 60, ms: 620 });
         }
         rub.textContent = `${T.t3.place} · Turn 3 of 5`;
       }
@@ -640,59 +682,87 @@
     setWhat('Choose one of the four ways.'); btns();
   }
   async function resolveT4(ctx, prev) {
-    const sim = C.simulate(gameChoices()), st = sim.states[4], c = st.ev.choice; setButtons([]);
-    const finish = async () => { if (st.ev.earned) await spawnInto(st.ev.earned, 'vault', [STAGE.G.front[0], 30], { stagger: 50 }); settle('vault', st.V); writeLedger(st, prev, 4, 'After this turn'); showOutcome('t4', 3, `<p>${C.consequence('t4', st, prev)}</p>`); };
-    if (c !== 'exchange') return finish();
-    // the bill: set the exchange rate by hand. The pointer runs from par (no charge) to the going rate in Florence.
-    const panel = document.createElement('div'); panel.className = 'panel leaf'; panel.setAttribute('role', 'group'); panel.setAttribute('aria-labelledby', 'billT');
+    setButtons([]);
+    const G = STAGE.G, c0 = C.simulate(gameChoices()).states[4].ev.choice;
+    const finish = async () => {
+      const sim = C.simulate(gameChoices()), st = sim.states[4];
+      if (st.ev.earned > 0) await spawnInto(st.ev.earned, 'vault', [G.front[0], G.street - 40], { stagger: 50 });
+      settle('vault', st.V); writeLedger(st, prev, 4, 'After this turn');
+      const note = C.billNote(st.ev);
+      showOutcome('t4', 3, `${note ? `<p><b>${esc(note)}</b></p>` : ''}<p>${C.consequence('t4', st, prev)}</p>`);
+    };
+    if (c0 !== 'exchange') return finish();
+    // The bet on the bill. Rival benches charge somewhere in a known range this year; nobody knows exactly where. Ask more
+    // and merchants go to them; ask less and you leave money on the table; and the exchange may move before the bills come home.
+    const Y = gameChoices()._year || C.YEAR0, lo = C.YEARS.going[0], hi = C.YEARS.going[C.YEARS.going.length - 1], M = prev.M;
+    const panel = document.createElement('div'); panel.className = 'panel leaf billpanel'; panel.setAttribute('role', 'group'); panel.setAttribute('aria-labelledby', 'billT');
+    const pct = (v) => (100 * v / 30).toFixed(1) + '%';
     panel.innerHTML = `<h3 id="billT">Set the rate on the bill</h3>
-      <p>For every 100 florins a merchant borrows here, he repays your partner in Bruges in Flemish money, and the partner sends it home on a second bill. The rates on the two bills decide what comes home.</p>
-      <div class="rate"><label class="sr-only" for="rateIn">Exchange rate on the bills</label><input type="range" id="rateIn" min="0" max="20" step="1" value="0" aria-valuetext="At par: 100 florins come home">
-      <div class="scale"><span>At par</span><span>The going rate in Florence</span></div></div>
-      <p class="read" id="rateRead">100 florins come home. You earn <b>0</b>.</p>
-      <p style="font-size:15px;color:var(--ink-2)">Slide the rate toward the going rate. The bill never says “interest”.</p>`;
-    $('#stage').appendChild(panel);
-    const inp = $('#rateIn', panel); inp.focus();
-    await new Promise((res) => {
-      const on = () => { const v = Number(inp.value); $('#rateRead').innerHTML = `${100 + v} florins come home. You earn <b>${v}</b> on every 100 lent.`; inp.setAttribute('aria-valuetext', `${100 + v} florins come home for every 100 lent`); if (v % 4 === 0) Sound.play('coin'); if (v >= 20) { inp.disabled = true; Sound.play('seal'); $('#rateRead').innerHTML = 'Sealed at the going rate: <b>120</b> florins come home for every 100 lent, and the bill names only a rate of exchange.'; setTimeout(res, reduced() ? 0 : 1300); } };
-      inp.addEventListener('input', on);
-      if (window.__FAST) { inp.value = 20; on(); }
-    });
+      <p>How much should come home for every 100 florins you lend? Rival benches are asking between ${lo} and ${hi} this year. Ask more than they do and merchants go to them; the exchange may also move before the bills come home.</p>
+      <div class="rate"><label class="sr-only" for="rateIn">What you ask for every 100 florins lent</label>
+        <div class="track"><span class="band" style="left:${pct(lo)};width:${pct(hi - lo)}"></span><span class="mark" id="goingMark" hidden></span></div>
+        <input type="range" id="rateIn" min="0" max="30" step="1" value="12">
+        <div class="scale"><span>0</span><span class="bandlabel" style="left:${pct((lo + hi) / 2)}">rival benches</span><span>30</span></div></div>
+      <p class="read" id="rateRead"></p>
+      <div class="merchants" id="merchants" aria-hidden="true">${Array.from({ length: 8 }, () => '<i></i>').join('')}</div>
+      <div class="actions" style="margin-top:.4rem"><button class="btn" type="button" id="sealRate"></button></div>`;
+    $('#stage').appendChild(panel); setTimeout(toStage, 60);
+    const inp = $('#rateIn', panel);
+    const on = () => { const v = Number(inp.value); $('#rateRead').innerHTML = `Ask <b>${v}</b> for every 100. If every merchant stays and the exchange holds, your ${M ? flo(M) : 'loans'} would earn <b>${flo(Math.round(M * v / 100))}</b>.`;
+      inp.setAttribute('aria-valuetext', `Ask ${v} for every 100 florins lent`); $('#sealRate').textContent = `Seal the bill at ${v}`; if (v % 5 === 0) Sound.play('coin'); };
+    inp.addEventListener('input', on); on(); inp.focus();
+    const rate = await new Promise((res) => { $('#sealRate').addEventListener('click', () => res(Number(inp.value))); if (window.__FAST) res(Y.going); });
+    if (S.practice) S.prate = rate; else { S.log.t4.rate = rate; save(); }
+    inp.disabled = true; $('#sealRate').remove(); Sound.play('seal');
+    // the reveal: where the rivals really were, who walked, and how the exchange moved
+    const ev = C.simulate(gameChoices()).states[4].ev;
+    const mk = $('#goingMark'); mk.hidden = false; mk.style.left = pct(Y.going); mk.title = `Rival benches: ${Y.going}`;
+    $('#rateRead').innerHTML = `Rival benches asked <b>${Y.going}</b> this year.`;
+    await wait(900);
+    const gone = Math.round((1 - ev.accept) * 8), ms = $$('#merchants i');
+    ms.forEach((m, j) => { if (j >= 8 - gone) m.classList.add('gone'); });
+    $('#rateRead').innerHTML += gone ? ` ${gone >= 8 ? 'Every merchant' : `${gone} merchant${gone === 1 ? '' : 's'} in 8`} took ${gone === 1 ? 'his' : 'their'} business to a rival bench.` : ' Every merchant stayed.';
+    await wait(1100);
+    $('#rateRead').innerHTML += ` The exchange moved ${ev.shock === 0 ? 'not at all' : `${Math.abs(ev.shock)} ${ev.shock > 0 ? 'in your favor' : 'against you'}`}.`;
+    await wait(1400);
     panel.remove(); await finish();
   }
 
   // ---------------- turn 5: the run ----------------
-  // Depositors walk up one at a time; the student pays each by dragging gold to them (or pressing Pay). The order of
-  // payments, the sale and the closing all come from runScript, which the lesson test checks against simulate.
+  // The rumor brings depositors to the bench, and nobody knows how many will come (this year's `line`). The student pays each
+  // by dragging gold to them (or pressing Pay). Every payment, sale and closing comes from runScript, checked against simulate.
   async function t5(ctx) {
-    buildTable({ street: stageMode() === 'tall' ? 110 : 150, label: 'Your counting table at the front of your shop. Depositors line up in the street to take their money out.' });
-    STAGE.personScale = STAGE.mode === 'tall' ? 1.3 : 1.45;
-    const prev = ctx.sim.states[4], G = STAGE.G;
+    const tall = stageMode() === 'tall';
+    buildTable({ street: tall ? 190 : 210, label: 'Your bench at the front of your shop, the street of Florence beyond it. Depositors line up to take their money out.' });
+    const prev = ctx.sim.states[4], G = STAGE.G, Y = ctx.ch._year || C.YEAR0;
     fill('vault', prev.V); fill('merch', prev.M); fill('king', prev.K);
     if (ctx.done) { const st = ctx.sim.states[5]; fill('vault', st.V); fill('merch', st.M); fill('king', 0); writeLedger(st, prev, 5, 'After this turn'); if (prev.K) strikeKing(); showOutcome('t5', 4, `<p>${C.consequence('t5', st, prev)}</p>`); return; }
-    const base = { t1: ctx.ch.t1, t2: ctx.ch.t2, t3: ctx.ch.t3, t4: ctx.ch.t4 };
+    const base = Object.assign({}, ctx.ch); delete base.t5;
     const scripts = {}; C.OPT.t5.forEach((c) => { scripts[c] = C.runScript(Object.assign({}, base, { t5: c })); });
     const n = scripts.pay.depositors, shared = scripts.pay.steps;   // pay, sell and bar share their first full payments
-    const q = []; let arrived = 0, served = 0, phase = 'run', timer = null, paying = false, auto = false;
-    // the line snakes back from the front of the bench in rows across the street
-    // the line gathers on both sides of the person at the front of your bench, row behind row
-    const gap = STAGE.mode === 'tall' ? 78 : 72, per = Math.floor((STAGE.W / 2 - 40) / gap);
-    const spot = (j) => { if (j === 0) return [G.front[0], G.street - 44]; const k = j - 1, side = k % 2 ? -1 : 1, idx = Math.floor(k / 2) % per, row = Math.floor(k / (2 * per));
-      return [G.front[0] + side * gap * (idx + 1) - side * (row % 2) * gap / 2, G.street - 50 - row * 62 - (idx % 2) * 6]; };
-    const relayout = (ms) => q.forEach((p, j) => { const [x, y] = spot(j); walk(p, x, y, ms || 700); });
-    function arrive() { if (arrived >= n) return; const i = arrived++; const p = person(i % 2 ? STAGE.W + 40 : -40, G.street * 0.6, i + 3, 'chit'); q.push(p); relayout(); }
+    const q = []; let arrived = 0, served = 0, phase = 'run', timer = null, paying = false, auto = false, warned = false;
+    // the crowd: the person at the bench in front, the rest in rows behind, smaller as they stand farther back
+    const feet0 = G.street - 12, s0 = tall ? 1.3 : 1.45;
+    const spot = (j) => {
+      if (j === 0) return [G.front[0], feet0, s0];
+      const press = Math.min(1, q.length / 12), k = j - 1, per = tall ? 3 : 5, side = k % 2 ? -1 : 1, idx = Math.floor(k / 2) % per, row = Math.floor(k / (2 * per));
+      const sc = s0 * (1 - 0.13 * (row + (idx ? 0 : 0.5)) - 0.04 * press), gap = (tall ? 54 : 70) * sc / s0 * (1 - 0.18 * press);
+      return [G.front[0] + side * gap * (idx + 1) + (row % 2 ? side * gap / 2 : 0), feet0 - 22 - row * 30 - (idx % 2) * 5, sc];
+    };
+    const relayout = (ms) => { q.forEach((p, j) => { const [x, y, sc] = spot(j); p.sc = sc; walk(p, x, y, ms || 650).then(() => { p.turn(1); }); }); depthSort(); };
+    function arrive() { if (arrived >= n) return; const i = arrived++; const side = i % 2 ? 1 : -1; const p = person(side > 0 ? STAGE.W + 50 : -50, feet0 - 40, i + 3, { hold: 'chit', scale: s0 * 0.8 }); q.push(p); relayout(); updateRace(); if (arrived === n) { setTimeout(() => { if (phase === 'run') setWhat(`No one else is coming. ${q.length} still in line.`); }, 900); } }
+    const owedInLine = () => q.length * C.N.claim;
+    const updateRace = () => { if (phase !== 'end') gauge(total('vault'), owedInLine(), 'Asked for in line'); };
     setWhat('A rumor sweeps Florence that the king will not pay.'); Sound.play('murmur');
-    // the rumor: a ripple across the street
-    const rip = E('circle', { cx: G.front[0], cy: G.street / 2, r: 4, fill: 'none', stroke: '#F0D489', 'stroke-width': 3 }, STAGE.layers.fx);
-    await tween(900, (f) => { rip.setAttribute('r', 4 + f * STAGE.W * 0.6); rip.setAttribute('opacity', 1 - f); }); rip.remove();
-    for (let i = 0; i < Math.min(3, n); i++) arrive();
-    // the rumor spreads faster than one banker can count: they arrive quicker than you can comfortably pay
-    if (reduced()) while (arrived < n) arrive(); else timer = setInterval(() => { if (phase === 'run') { arrive(); if (q.length > 4) { Sound.play('murmur'); jostle(); } } if (arrived >= n) clearInterval(timer); }, 780);
-    gauge(prev.V, n * C.N.claim, 'Still in line');
-    setWhat(`${n} depositors are coming for <b>${flo(n * C.N.claim)}</b>. Pay them one by one.`);
-    function jostle() { q.slice(3).forEach((p) => { if (p.body && !reduced()) p.body.animate([{ transform: p.body.getAttribute('transform') + ' translate(0,0)' }, { transform: p.body.getAttribute('transform') + ' translate(3px,-2px)' }, { transform: p.body.getAttribute('transform') + ' translate(0,0)' }], { duration: 260 }); }); }
-    let warned = false;
-    // the pay gesture: drag gold from the vault into the hands of the person at the front of the line
+    // the rumor spreads across the city
+    const rip = E('circle', { cx: G.front[0], cy: G.street * 0.4, r: 4, fill: 'none', stroke: '#F0D489', 'stroke-width': 4 }, STAGE.layers.fx);
+    await tween(1000, (f) => { rip.setAttribute('r', 4 + f * STAGE.W * 0.7); rip.setAttribute('opacity', 1 - f); }); rip.remove();
+    for (let i = 0; i < Math.min(2, n); i++) arrive();
+    // they come faster than one banker can comfortably count, and this year's pace is its own
+    if (reduced()) while (arrived < n) arrive(); else timer = setInterval(() => { if (phase === 'run') { arrive(); if (q.length > 4) { Sound.play('murmur'); jostle(); } } if (arrived >= n) clearInterval(timer); }, Y.pace || 780);
+    setWhat('Depositors are coming for their money. Pay them one by one.');
+    function jostle() { if (reduced()) return; q.slice(2).forEach((p, j) => { const dx = (j % 2 ? 1 : -1) * 3; p.fig.animate([{ transform: 'translate(0px,0px)' }, { transform: `translate(${dx}px,-2px)` }, { transform: 'translate(0px,0px)' }], { duration: 300 }); }); }
+    // the pay gesture: drag gold from the vault into the hands of the person at the bench
     const svg = STAGE.svg, vb = G.vault.box;
     const hit = E('rect', { x: vb[0], y: vb[1], width: vb[2], height: vb[3], fill: 'transparent', style: 'cursor:grab' }, STAGE.layers.fx);
     const ghost = E('g', { opacity: 0, 'pointer-events': 'none' }, STAGE.layers.top); drawStack(E('g', { transform: 'translate(-10 0)' }, ghost), 100); drawStack(E('g', { transform: 'translate(12 5)' }, ghost), 100);
@@ -700,24 +770,25 @@
     let drag = false;
     hit.addEventListener('pointerdown', (e) => { if (phase !== 'run' || !q.length) return; drag = true; hit.setPointerCapture(e.pointerId); ghost.setAttribute('opacity', 1); ghost.setAttribute('transform', `translate(${ptOf(e)})`); e.preventDefault(); });
     hit.addEventListener('pointermove', (e) => { if (drag) ghost.setAttribute('transform', `translate(${ptOf(e)})`); });
-    const up = (e) => { if (!drag) return; drag = false; ghost.setAttribute('opacity', 0); if (ptOf(e)[1] < G.street + 70) payNext(); };
-    hit.addEventListener('pointerup', up); hit.addEventListener('pointercancel', () => { drag = false; ghost.setAttribute('opacity', 0); });
+    hit.addEventListener('pointerup', (e) => { if (!drag) return; drag = false; ghost.setAttribute('opacity', 0); if (ptOf(e)[1] < G.street + 70) payNext(); });
+    hit.addEventListener('pointercancel', () => { drag = false; ghost.setAttribute('opacity', 0); });
     const canPay = () => shared[served] && shared[served].type === 'pay' && !shared[served].partial;
+    // a paid depositor takes the purse and walks off; the line steps forward
+    const leave = (p) => { p.setHold('purse'); walk(p, p.x < G.front[0] ? -90 : STAGE.W + 90, p.y - 6, 1100).then(() => p.g.remove()); };
     async function payNext() {
       if (paying || phase !== 'run' || !q.length) return; if (!canPay()) return dryMoment();
       paying = true;
       const front = q.shift(), stacks = take('vault', shared[served].amount);
-      await Promise.all(stacks.map((s, j) => wait(j * 60).then(() => fly(s, front.x + (j ? 9 : -9), front.y + 20, 360, 40))));
-      stacks.forEach((s, j) => { front.g.insertBefore(s.g, front.g.firstChild); place(s, j ? 12 : -12, 22, 0.75); });
-      served++;
-      walk(front, front.x < G.front[0] ? -80 : STAGE.W + 80, front.y - 8, 900).then(() => front.g.remove());
-      relayout(500); paying = false;
+      await Promise.all(stacks.map((s, j) => wait(j * 60).then(() => fly(s, front.x + 20 * front.sc, front.y - 32 * front.sc, 360, 50))));
+      stacks.forEach((s) => s.g.remove());
+      served++; $('#stage').dataset.paid = served; leave(front); relayout(500); paying = false;
       if (phase !== 'run') return;   // the door was barred while this depositor was being paid
-      const owed = (n - served) * C.N.claim, inV = total('vault'); gauge(inV, owed, 'Still in line');
-      if (inV < owed && !warned) { warned = true; setWhat(`Paid ${served} of ${n}. Your vault <b>cannot cover</b> everyone still in line.`); announce('Your vault cannot cover everyone still in line.'); }
-      else setWhat(`Paid ${served} of ${n}.${inV < owed ? ' Your vault <b>cannot cover</b> everyone still in line.' : ''}`);
+      updateRace();
+      const inV = total('vault');
       if (served === n) return endRun('pay');
       if (!canPay()) return dryMoment();
+      if (inV < owedInLine() && !warned) { warned = true; setWhat(`Paid ${served}. The line already asks for more than your vault holds.`); announce('The line asks for more than your vault holds.'); }
+      else setWhat(`Paid ${served}.${arrived < n ? ' More are coming.' : ` ${q.length} still in line.`}`);
       buttons();
     }
     async function payAll() { auto = true; buttons(); while (phase === 'run' && canPay() && served < n) { if (!q.length) { arrive(); await wait(150); continue; } await payNext(); await wait(110); } }
@@ -729,14 +800,15 @@
       if (served >= 4 && !auto) mk('Keep paying everyone', payAll);
       mk('Bar the door', () => endRun('bar'));
     }
-    buttons(); setButtons([]); toStage();
+    buttons(); setButtons([]); toStage(); updateRace();
     async function dryMoment() {
-      phase = 'dry'; clearInterval(timer); while (arrived < n) arrive();
+      phase = 'dry'; clearInterval(timer); while (arrived < n) arrive(); updateRace();
       const left = total('vault');
-      const agent = person(STAGE.W - 50, G.street * 0.36, 2); agent.body.children[1].setAttribute('fill', '#3D7563');
-      const tg = E('g', { transform: `translate(${STAGE.W - 160} ${G.street + 34})` }, STAGE.layers.top); E('rect', { x: -130, y: -19, width: 260, height: 34, rx: 4, fill: '#EDE0C4', stroke: '#2A1C14', 'stroke-width': 1.5 }, tg);
-      const tt = E('text', { x: 0, y: 5, 'text-anchor': 'middle', 'font-family': 'Alegreya, serif', 'font-size': 18, 'font-weight': 700, fill: '#2A1C14' }, tg); tt.textContent = 'A rival will buy loans at half price';
-      setWhat(`${left ? `Only <b>${flo(left)}</b> left` : 'Your vault is empty'}, and ${n - served} still in line.`);
+      const agent = person(STAGE.W - 70, feet0 - 40, 2, { kind: 'hat', robe: '#3D7563', scale: s0 * 0.85 }); agent.turn(-1); depthSort();
+      const tg = E('g', { transform: `translate(${STAGE.W - (tall ? 150 : 170)} ${G.street + 34})` }, STAGE.layers.top); E('rect', { x: tall ? -140 : -150, y: -20, width: tall ? 280 : 300, height: 36, rx: 4, fill: '#EDE0C4', stroke: '#2A1C14', 'stroke-width': 1.5 }, tg);
+      const tt = E('text', { x: 0, y: 5, 'text-anchor': 'middle', 'font-family': 'Alegreya, serif', 'font-size': tall ? 18 : 19, 'font-weight': 700, fill: '#2A1C14' }, tg); tt.textContent = 'A rival will buy loans at half price';
+      setWhat(`${left ? `Only <b>${flo(left)}</b> left` : 'Your vault is empty'}, and ${q.length} still in line.`);
+      q.slice(0, 4).forEach((p) => { if (!reduced()) p.fig.animate([{ transform: 'translate(0,0)' }, { transform: 'translate(0,-6px)' }, { transform: 'translate(0,0)' }], { duration: 400, iterations: 2 }); });
       Sound.play('murmur'); announce('Your vault cannot pay the next depositor in full.');
       ov.innerHTML = '';
       const clear = () => { tg.remove(); agent.g.remove(); };
@@ -745,6 +817,7 @@
       mk('Bar the door', () => { clear(); endRun('bar'); });
       ov.querySelector('button').focus();
     }
+    const shutter = async (down) => { const sh = E('rect', { x: 0, y: down ? -G.street : 0, width: STAGE.W, height: G.street + 6, fill: 'url(#wood)', stroke: '#1E120A', 'stroke-width': 3 }, STAGE.layers.top); Sound.play('thud'); await tween(500, (f) => sh.setAttribute('y', lerp(-G.street, 0, f))); return sh; };
     async function endRun(choice) {
       if (phase === 'end') return;
       phase = 'end'; clearInterval(timer);
@@ -754,44 +827,45 @@
       const sim = C.simulate(gameChoices()), st = sim.states[5], rs = scripts[choice];
       if (choice === 'bar') {
         // the shutter comes down; three days later every depositor still owed is back at once
-        const sh = E('rect', { x: 0, y: -G.street, width: STAGE.W, height: G.street + 6, fill: 'url(#wood)', stroke: '#1E120A', 'stroke-width': 3 }, STAGE.layers.top); Sound.play('thud');
-        await tween(500, (f) => sh.setAttribute('y', lerp(-G.street, 0, f)));
-        const lbl = E('text', { x: STAGE.W / 2, y: G.street * 0.62, 'text-anchor': 'middle', 'font-family': 'Texturina, serif', 'font-size': 30, 'font-weight': 600, fill: '#F4E7C8' }, STAGE.layers.top); lbl.textContent = 'Three days later';
+        const sh = await shutter(true);
+        const lbl = E('text', { x: STAGE.W / 2, y: G.street * 0.55, 'text-anchor': 'middle', 'font-family': 'Grenze Gotisch, Texturina, serif', 'font-size': 40, 'font-weight': 600, fill: '#F4E7C8' }, STAGE.layers.top); lbl.textContent = 'Three days later';
         setWhat('You bar the door. Three days later you open it again.');
         q.forEach((p) => p.g.remove()); q.length = 0;
         await wait(1300); lbl.remove();
-        for (let i = served; i < rs.depositors; i++) { const [x, y] = spot(i - served); q.push(person(x, y, i + 3, 'chit')); }
+        for (let i = served; i < rs.depositors; i++) { q.push(person(0, 0, i + 3, { hold: 'chit', scale: s0 })); }
+        q.forEach((p, j) => { const [x, y, sc] = spot(j); p.sc = sc; p.draw(); move(p, x, y); }); depthSort();
         await tween(500, (f) => sh.setAttribute('y', lerp(0, -G.street - 10, f))); sh.remove(); Sound.play('murmur');
-        setWhat(`Every depositor wants all their coins back: <b>${flo((rs.depositors - served) * C.N.claim)}</b> still owed.`);
+        gauge(total('vault'), owedInLine(), 'Asked for in line');
+        setWhat(`Every depositor wants all their coins back: <b>${flo(owedInLine())}</b> still owed.`);
         await wait(900);
-      } else {
-        while (arrived < n) arrive();
-        await wait(400);
-      }
-      await playSteps(rs.steps.slice(served), q, choice === 'bar' || auto);
+      } else { while (arrived < n) arrive(); await wait(400); }
+      await playSteps(rs.steps.slice(served), choice === 'bar' || auto);
       await kingsLetter(st, prev);
     }
-    async function playSteps(steps, line, fast) {
+    async function playSteps(steps, fast) {
       for (const s of steps) {
         if (s.type === 'pay') {
-          const front = line.shift(); if (!front) continue;
+          const front = s.partial ? q[0] : q.shift(); if (!front) continue;
           const stacks = take('vault', s.amount);
-          await Promise.all(stacks.map((x, j) => wait(j * 40).then(() => fly(x, front.x, front.y + 20, fast ? 220 : 360, 30))));
+          await Promise.all(stacks.map((x, j) => wait(j * 40).then(() => fly(x, front.x + 20 * front.sc, front.y - 32 * front.sc, fast ? 220 : 360, 40))));
           stacks.forEach((x) => x.g.remove());
-          walk(front, front.x < G.front[0] ? -80 : STAGE.W + 80, front.y - 8, 700).then(() => front.g.remove());
-          line.forEach((p, j) => walk(p, spot(j)[0], spot(j)[1], 300));
-          gauge(total('vault'), line.length * C.N.claim, 'Still in line'); setWhat(`${line.length} still in line.`);
+          if (s.partial) { setWhat(`The last ${flo(s.amount)} go to the next in line, who is owed ${flo(C.N.claim)}.`); await wait(700); continue; }
+          leave(front); relayout(300);
+          gauge(total('vault'), owedInLine(), 'Asked for in line'); setWhat(`${q.length} still in line.`);
           await wait(fast ? 80 : 260);
         } else if (s.type === 'sell') {
           setWhat(`You sell <b>${flo(s.sold)}</b> of loans to a rival bank for <b>${flo(s.cash)}</b>.`); Sound.play('thud');
-          const loans = take('merch', s.sold); await Promise.all(loans.map((x, j) => wait(j * 25).then(() => fly(x, STAGE.W + 60, 30, 460, 50)))); loans.forEach((x) => x.g.remove());
-          await spawnInto(s.cash, 'vault', [STAGE.W - 40, 40], { stagger: 25, ms: 420 }); gauge(total('vault'), line.length * C.N.claim, 'Still in line');
+          const loans = take('merch', s.sold); await Promise.all(loans.map((x, j) => wait(j * 25).then(() => fly(x, STAGE.W + 60, G.street - 40, 460, 50)))); loans.forEach((x) => x.g.remove());
+          await spawnInto(s.cash, 'vault', [STAGE.W - 40, G.street - 40], { stagger: 25, ms: 420 }); gauge(total('vault'), owedInLine(), 'Asked for in line');
           await wait(700);
         } else if (s.type === 'close') {
-          const sh = E('rect', { x: 0, y: -G.street, width: STAGE.W, height: G.street + 6, fill: 'url(#wood)', stroke: '#1E120A', 'stroke-width': 3 }, STAGE.layers.top); Sound.play('thud');
-          await tween(500, (f) => sh.setAttribute('y', lerp(-G.street, 0, f)));
-          line.forEach((p) => p.g.remove());
-          const tg = E('text', { x: STAGE.W / 2, y: G.street * 0.62, 'text-anchor': 'middle', 'font-family': 'Texturina, serif', 'font-size': STAGE.mode === 'tall' ? 26 : 30, 'font-weight': 600, fill: '#F4E7C8' }, STAGE.layers.top); tg.textContent = `Closed, with ${s.unpaid} still in line`;
+          // the ones you could not pay
+          q.forEach((p) => p.angry()); Sound.play('murmur');
+          setWhat(`The vault is empty, with ${s.unpaid} still in line.`);
+          if (!reduced()) q.forEach((p, j) => p.fig.animate([{ transform: 'translate(0,0)' }, { transform: `translate(${j % 2 ? 4 : -4}px,-5px)` }, { transform: 'translate(0,0)' }], { duration: 260, iterations: 4 }));
+          await wait(1300);
+          await shutter(true);
+          const tg = E('text', { x: STAGE.W / 2, y: G.street * 0.55, 'text-anchor': 'middle', 'font-family': 'Grenze Gotisch, Texturina, serif', 'font-size': tall ? 32 : 40, 'font-weight': 600, fill: '#F4E7C8' }, STAGE.layers.top); tg.textContent = `Closed, with ${s.unpaid} still in line`;
           setWhat(`Your bench is closed, with ${s.unpaid} depositors still unpaid.`);
           await wait(1000);
         }
@@ -826,22 +900,58 @@
 
   // ---------------- the chronicle ----------------
   // where this bank stands among all 576 ways to play the five turns: something to compare with a friend
-  let ALL = null;
+  // Where this bank stands: the student's bank against all 576 ways to play the five turns in the same year of Florence
+  // (the same run, the same rival rates, the same exchange; bills set at the rivals' rate). Something to compare with a friend.
+  const ALL = {};
   function standing(ch) {
-    if (!ALL) { ALL = []; const O = C.OPT; for (const a of O.t1) for (const b of O.t2) for (const c of O.t3) for (const d of O.t4) for (const e of O.t5) { const r = C.simulate({ t1: a, t2: b, t3: c, t4: d, t5: e }); ALL.push({ s: C.score(r), f: C.fateOf(r) }); } }
-    const r = C.simulate(ch), mine = C.score(r), fate = C.fateOf(r), below = ALL.filter((x) => x.s < mine).length, same = ALL.filter((x) => x.f === fate).length;
-    const best = Math.max(...ALL.map((x) => x.s));
-    return { pct: Math.floor(100 * below / ALL.length), same, best, n: ALL.length, top: mine === best };
+    const Y = ch._year || C.YEAR0, key = JSON.stringify(Y);
+    if (!ALL[key]) { const out = []; const O = C.OPT; for (const a of O.t1) for (const b of O.t2) for (const c of O.t3) for (const d of O.t4) for (const e of O.t5) { const r = C.simulate({ t1: a, t2: b, t3: c, t4: d, t5: e, _year: Y }); out.push({ s: C.score(r), f: C.fateOf(r) }); } ALL[key] = out; }
+    const all = ALL[key], r = C.simulate(ch), mine = C.score(r), fate = C.fateOf(r), below = all.filter((x) => x.s < mine).length, same = all.filter((x) => x.f === fate).length;
+    const best = Math.max(...all.map((x) => x.s));
+    return { pct: Math.floor(100 * below / all.length), same, best, n: all.length, top: mine >= best, fate };
   }
-  function sealHtml(c, ch) {
-    const st = standing(ch);
-    const line = c.fate === 'survived' ? `My bank outlasted the Bardi and the Peruzzi, worth ${flo(c.W)}${st.top ? ', the best ending there is' : `, better than ${st.pct}% of the ways to play`}.`
+  function shareLine(c, st) {
+    return c.fate === 'survived' ? `My bank outlasted the Bardi and the Peruzzi, worth ${flo(c.W)}${st.top ? ', as good as any banker in my year of Florence' : `, ahead of ${st.pct}% of the ways to play my year of Florence`}.`
       : c.fate === 'run' ? 'My bank in 1340s Florence ran out of gold with depositors still at the door.'
       : 'King Edward stopped paying, and my bank in 1340s Florence went down with the Bardi and the Peruzzi.';
-    const rank = c.fate === 'survived' ? (st.top ? `No banker in Florence does better: ${flo(st.best)} is the best ending of all ${st.n} ways to play.` : `Of the ${st.n} ways to play, the best banker in Florence ends worth ${flo(st.best)}.`)
-      : `${Math.round(100 * st.same / st.n)}% of the ${st.n} ways to play end this way. The best banker in Florence ends worth ${flo(st.best)}.`;
+  }
+  function sealHtml(c, ch) {
+    const st = standing(ch), line = shareLine(c, st);
+    const rank = c.fate === 'survived' ? (st.top ? `No way of playing your year of Florence does better than ${flo(st.best)}.` : `In your year of Florence (the same run, the same rival rates), the best of the ${st.n} ways to play ends worth ${flo(st.best)}.`)
+      : `In your year of Florence, ${Math.round(100 * st.same / st.n)}% of the ${st.n} ways to play end this way, and the best ends worth ${flo(st.best)}. Another year brings a different run.`;
     return `<div class="seal ${c.fate === 'survived' ? 'good' : 'bad'}"><p class="seal-rank">${esc(rank)}</p><p class="seal-line" id="shareText">${esc(line)}${st.top ? ' Can you match it?' : ' Can you do better?'}</p>
-      <div class="actions" style="margin-top:.5rem"><button class="btn gold" type="button" id="shareBtn">Copy a line to send a friend</button><span id="shareMsg" aria-live="polite"></span></div></div>`;
+      <div class="actions" style="margin-top:.5rem"><button class="btn gold" type="button" id="cardBtn">Share a picture of your bank</button><button class="btn quiet" type="button" id="shareBtn">Copy the line</button><span id="shareMsg" aria-live="polite"></span></div>
+      <img class="card-preview" id="cardPreview" alt="" hidden></div>`;
+  }
+  // the share card: a small picture in the chronicle's style, with the fate, the worth, the standing and the link
+  async function makeCard(c, ch) {
+    const st = standing(ch), W = 1080, H = 1350, cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d');
+    try { await document.fonts.ready; } catch (e) { /* fonts optional */ }
+    const black = '"Grenze Gotisch", Georgia, serif', disp = '"Texturina", Georgia, serif', txt = '"Alegreya", Georgia, serif';
+    g.fillStyle = '#2E1C12'; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#EDE0C4'; g.fillRect(44, 44, W - 88, H - 88);
+    const gr = g.createLinearGradient(0, 0, W, H); gr.addColorStop(0, '#F0D489'); gr.addColorStop(0.5, '#C79A3A'); gr.addColorStop(1, '#8C6A22');
+    g.strokeStyle = gr; g.lineWidth = 12; g.strokeRect(66, 66, W - 132, H - 132); g.strokeStyle = '#A8301C'; g.lineWidth = 2; g.strokeRect(86, 86, W - 172, H - 172);
+    g.textAlign = 'center';
+    g.fillStyle = '#A8301C'; g.font = `600 30px ${disp}`; g.fillText('Florence, 1338 to 1346', W / 2, 160);
+    g.fillStyle = '#2A1C14'; g.font = `600 84px ${black}`; g.fillText('The Banker of Florence', W / 2, 250);
+    // the fate's picture
+    const im = new Image(); im.src = IMG[FATE_IMG[c.fate]].src; try { await im.decode(); const bw = W - 260, bh = 380, r = Math.max(bw / im.naturalWidth, bh / im.naturalHeight), sw = bw / r, sh2 = bh / r;
+      g.fillStyle = gr; g.fillRect(122, 292, bw + 16, bh + 16); g.drawImage(im, (im.naturalWidth - sw) / 2, (im.naturalHeight - sh2) / 2, sw, sh2, 130, 300, bw, bh); } catch (e) { /* picture optional */ }
+    g.fillStyle = c.fate === 'survived' ? '#2F5E4F' : '#8A2412'; g.font = `italic 600 40px ${txt}`;
+    const head = c.fate === 'survived' ? 'My bank came through the 1340s' : c.fate === 'run' ? 'My bank closed in the run' : 'My bank fell with the king’s debts';
+    g.fillText(head, W / 2, 770);
+    if (c.fate === 'survived') { g.fillStyle = '#2A1C14'; g.font = `600 150px ${black}`; g.fillText(fl(c.W), W / 2, 930); g.font = `italic 40px ${txt}`; g.fillText('florins', W / 2, 985); }
+    else { g.fillStyle = '#2A1C14'; g.font = `600 96px ${black}`; g.fillText(c.fate === 'run' ? 'Banca rotta' : 'Bankrupt', W / 2, 920); g.font = `italic 34px ${txt}`; g.fillText('a broken bench', W / 2, 975); }
+    // a row of gold stacks, one for every 100 florins of worth (up to 15)
+    const stacks = Math.max(0, Math.min(15, Math.floor(c.W / 100)));
+    for (let i = 0; i < stacks; i++) { const x = W / 2 - (stacks - 1) * 26 + i * 52, y = 1060; const cg = g.createLinearGradient(x - 18, 0, x + 18, 0); cg.addColorStop(0, '#8C6A22'); cg.addColorStop(0.4, '#F0D489'); cg.addColorStop(1, '#8C6A22'); g.fillStyle = cg; g.fillRect(x - 18, y - 40, 36, 40); g.beginPath(); g.ellipse(x, y, 18, 7, 0, 0, Math.PI); g.fill(); g.fillStyle = '#E9C66E'; g.beginPath(); g.ellipse(x, y - 40, 18, 7, 0, 0, Math.PI * 2); g.fill(); }
+    g.fillStyle = '#2A1C14'; g.font = `30px ${txt}`;
+    const rank = c.fate === 'survived' ? (st.top ? 'As good as any banker in my year of Florence.' : `Ahead of ${st.pct}% of the ways to play my year of Florence.`) : `The best banker in my year of Florence ends worth ${fl(st.best)}.`;
+    g.fillText(rank, W / 2, 1130);
+    g.fillStyle = '#A8301C'; g.font = `italic 600 34px ${txt}`; g.fillText('Can you do better?', W / 2, 1190);
+    g.fillStyle = '#5A4636'; g.font = `24px ${txt}`; g.fillText(location.href.split('#')[0].replace(/^https?:\/\//, ''), W / 2, 1240);
+    return new Promise((res) => cv.toBlob((b) => res({ blob: b, url: cv.toDataURL('image/png') }), 'image/png'));
   }
   function showChronicle() {
     const ch = gameChoices(), c = C.chronicle(ch);
@@ -860,6 +970,14 @@
       <div class="actions">${S.practice ? '<button class="btn" type="button" id="backRc">Back to my graded receipt</button><button class="btn quiet" type="button" id="againP">Play again</button>' : '<button class="btn" type="button" id="toNote">Next: Your note</button><button class="btn quiet" type="button" id="againP">Play again for another fate</button>'}</div></article>`;
     $('#againP').addEventListener('click', startPractice);
     if (S.practice) $('#backRc').addEventListener('click', endPractice); else $('#toNote').addEventListener('click', () => go('note'));
+    const cb = $('#cardBtn'); if (cb) cb.addEventListener('click', async () => {
+      const card = await makeCard(c, ch), file = new File([card.blob], 'my-bank-of-florence.png', { type: 'image/png' }), pv = $('#cardPreview');
+      pv.src = card.url; pv.alt = 'Your share card: ' + $('#shareText').textContent; pv.hidden = false;
+      let shared = false;
+      try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], text: $('#shareText').textContent + ' ' + location.href.split('#')[0] }); shared = true; } } catch (e) { shared = false; }
+      if (!shared) { const a = document.createElement('a'); a.href = URL.createObjectURL(card.blob); a.download = 'my-bank-of-florence.png'; document.body.appendChild(a); a.click(); a.remove(); }
+      $('#shareMsg').textContent = shared ? 'Shared.' : 'Saved as a picture. Send it to a friend.';
+    });
     const sh = $('#shareBtn'); if (sh) sh.addEventListener('click', async () => { const t = $('#shareText').textContent + ' ' + location.href.split('#')[0]; let done = false; try { await navigator.clipboard.writeText(t); done = true; } catch (e) { done = false; } $('#shareMsg').textContent = done ? 'Copied. Paste it to a friend.' : 'Select the line above and copy it.'; });
     focusHead();
   }
@@ -902,7 +1020,7 @@
     const cols = 4, bw = (W - 220 - 3 * 12) / cols;
     D.STEPS.forEach((s, i) => { const x = 110 + (i % cols) * (bw + 12), y = 450 + Math.floor(i / cols) * 92, ok = S.log[s.id].done;
       g.fillStyle = ok ? '#DCE8DC' : '#F3D9D2'; g.fillRect(x, y, bw, 78); g.fillStyle = ok ? '#2F5E4F' : '#A8301C'; g.font = `700 21px ${txt}`; g.fillText((ok ? '✓ ' : '✗ ') + s.label, x + 14, y + 34, bw - 24); g.fillStyle = '#5A4636'; g.font = `18px ${txt}`; g.fillText(ok ? 'complete' : 'not finished', x + 14, y + 62); });
-    const cr = C.chronicle(choices()); if (cr) { g.fillStyle = cr.fate === 'survived' ? '#2F5E4F' : '#8A2412'; g.font = `italic 600 24px ${txt}`; g.fillText('This bank: ' + cr.head.replace(/^Your bank /, ''), 110, 450 + 2 * 92 + 20); }
+    const cr = C.chronicle(gameChoices()); if (cr) { g.fillStyle = cr.fate === 'survived' ? '#2F5E4F' : '#8A2412'; g.font = `italic 600 24px ${txt}`; g.fillText('This bank: ' + cr.head.replace(/^Your bank /, ''), 110, 450 + 2 * 92 + 20); }
     const ny = 450 + 2 * 92 + 70; g.fillStyle = '#2A1C14'; g.font = `700 26px ${txt}`; g.fillText(C.note.receiptHeading, 110, ny);
     g.font = `23px ${txt}`; (S.memo.trim() ? wrapLines(g, S.memo, W - 220, 8) : ['(no note yet)']).forEach((ln, i) => g.fillText(ln, 110, ny + 40 + i * 32));
     g.fillStyle = '#5A4636'; g.font = `21px ${txt}`; g.fillText('Issued ' + new Date(payload.issued).toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' }), 110, H - 170);
@@ -928,8 +1046,8 @@
     focusHead();
   }
   // replays: a game of their own, kept in memory only
-  function startPractice() { S.practice = (S.practice || 0) + 1; S.pchoices = {}; go('t1'); }
-  function endPractice() { S.practice = 0; S.pchoices = {}; go('receipt'); }
+  function startPractice() { S.practice = (S.practice || 0) + 1; S.pchoices = {}; S.prate = null; go('t1'); }
+  function endPractice() { S.practice = 0; S.pchoices = {}; S.prate = null; go('receipt'); }
 
   // ---------------- credits ----------------
   $('#creditsBtn').addEventListener('click', () => {

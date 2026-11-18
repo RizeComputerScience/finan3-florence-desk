@@ -107,6 +107,7 @@ figcaption { font: italic 400 14px/1.4 var(--text); color: var(--on-wood-2); mar
 .seal.bad { border-color: var(--vermilion); background: rgba(168,48,28,.08); }
 .seal-rank { font-size: 17px; margin: 0 0 .4rem; }
 .seal-line { font: italic 600 21px/1.4 var(--text); margin: 0; }
+.card-preview { display: block; width: min(100%, 320px); margin-top: .8rem; box-shadow: 0 8px 20px rgba(0,0,0,.35); }
 #shareMsg { font-size: 15px; color: var(--verdigris-2); }
 .howto { margin: 1.1rem 0 0; padding: 0; list-style: none; font-size: 17px; }
 .howto li { padding-left: 1.4em; position: relative; margin: .35rem 0; }
@@ -118,14 +119,15 @@ details.resume summary { cursor: pointer; color: var(--ultramarine); min-height:
 .err { color: var(--vermilion); font-weight: 600; min-height: 1.4em; margin: .4rem 0 0; }
 
 /* ---------------- a turn ---------------- */
-.turn { display: grid; grid-template-columns: minmax(300px, 400px) minmax(0, 1fr); grid-template-areas: 'leaf stage' 'ledger stage' 'ledger .'; grid-template-rows: auto auto 1fr; gap: clamp(14px, 1.8vw, 24px) clamp(16px, 2.2vw, 30px); align-items: start; }
+.turn { display: grid; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); grid-template-areas: 'leaf stage' 'ledger stage' 'ledger .'; grid-template-rows: auto auto 1fr; gap: clamp(14px, 1.8vw, 24px) clamp(16px, 2.2vw, 30px); align-items: start; }
 .turn > .leaf { grid-area: leaf; }
 .turn > .stagecol { grid-area: stage; }
 .turn > .ledger { grid-area: ledger; }
-.turn > .leaf { padding: 24px 26px 22px; }
+.turn > .leaf { padding: 20px 22px 18px; }
+.turn > .leaf .story p { font-size: 17px; }
 .mini { margin: .2rem 0 1rem; }
 .mini .frame { padding: 5px; background: linear-gradient(135deg, var(--gold-hi), var(--gold) 40%, var(--gold-lo) 75%, var(--gold)); }
-.mini img { display: block; width: 100%; height: 150px; object-fit: cover; border: 1px solid #5b3a12; }
+.mini img { display: block; width: 100%; height: 104px; object-fit: cover; border: 1px solid #5b3a12; }
 .mini figcaption { font-size: 13px; margin-top: .3rem; }
 .outcome { margin-top: 1rem; padding-top: .8rem; border-top: 1.5px solid rgba(168,48,28,.35); }
 .outcome[hidden] { display: none; }
@@ -154,11 +156,15 @@ details.resume summary { cursor: pointer; color: var(--ultramarine); min-height:
 /* the ledger: an open account book; the pen writes each figure */
 .ledger { color: var(--ink); background: var(--vellum-2); border-radius: 3px; padding: 14px 18px 12px; box-shadow: var(--leaf-shadow);
   background-image: repeating-linear-gradient(180deg, transparent 0 33px, rgba(168,48,28,.18) 33px 34px), linear-gradient(90deg, rgba(0,0,0,.05), transparent 6%, transparent 94%, rgba(0,0,0,.05)); }
+.ledger summary { list-style: none; cursor: pointer; }
+.ledger summary::-webkit-details-marker { display: none; }
+.ledger summary h3::after { content: '\25BE'; margin-left: .4rem; color: var(--ink-2); font-size: 14px; }
+.ledger[open] summary h3::after { content: '\25B4'; }
 .ledger h3 { font: 600 17px/1 var(--display); color: var(--vermilion); margin: 0 0 6px; display: flex; justify-content: space-between; align-items: baseline; }
 .ledger h3 span { font: italic 400 14px/1 var(--text); color: var(--ink-2); }
 .ledger table { width: 100%; border-collapse: collapse; font-size: 17px; }
 .ledger td, .ledger th { padding: 5px 4px; height: 34px; vertical-align: baseline; }
-.ledger th { text-align: left; font-weight: 400; }
+.ledger th { text-align: left; font-weight: 400; white-space: nowrap; }
 .ledger td { text-align: right; font-style: italic; font-variant-numeric: oldstyle-nums tabular-nums; white-space: nowrap; }
 .ledger td.chg { width: 7.5em; font-size: 15px; }
 .ledger td.chg.up { color: var(--verdigris-2); }
@@ -175,7 +181,16 @@ details.resume summary { cursor: pointer; color: var(--ultramarine); min-height:
 .panel { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(92%, 520px); color: var(--ink); padding: 18px 20px; z-index: 3; }
 .panel h3 { font: 600 28px/1.1 var(--black); margin: 0 0 .5rem; }
 .panel p { margin: 0 0 .6rem; font-size: 17px; }
-.rate { margin: .4rem 0 .2rem; }
+.rate { margin: .4rem 0 .2rem; position: relative; }
+.rate .track { position: relative; height: 10px; margin: 6px 0 -18px; pointer-events: none; }
+.rate .band { position: absolute; top: 0; height: 10px; background: repeating-linear-gradient(135deg, rgba(168,48,28,.35) 0 5px, rgba(168,48,28,.15) 5px 10px); border-radius: 2px; }
+.rate .mark { position: absolute; top: -8px; width: 4px; height: 26px; margin-left: -2px; background: var(--vermilion); border-radius: 2px; box-shadow: 0 0 0 2px var(--vellum); }
+.rate .scale { position: relative; }
+.rate .bandlabel { position: absolute; transform: translateX(-50%); color: var(--vermilion); font-style: italic; }
+.billpanel { width: min(94%, 560px); }
+.merchants { display: flex; gap: 6px; margin: .2rem 0; }
+.merchants i { width: 18px; height: 26px; border-radius: 9px 9px 3px 3px; background: var(--verdigris); border: 1.5px solid var(--ink); transition: transform .8s ease, opacity .8s ease; }
+.merchants i.gone { transform: translateX(40px); opacity: .15; }
 .rate input[type=range] { width: 100%; accent-color: var(--vermilion); height: 36px; }
 .rate .scale { display: flex; justify-content: space-between; font-size: 14px; color: var(--ink-2); }
 .rate .read { font: 600 20px/1.2 var(--text); margin: .4rem 0; }

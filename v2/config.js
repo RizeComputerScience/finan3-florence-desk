@@ -29,7 +29,19 @@
   const keyOf = (v) => String(v == null ? '' : v).split('-')[0];
   const up10 = (x) => Math.ceil(x / 10 - 1e-9) * 10;
 
+  /* A year of Florence (version 2): what the bankers could not know in advance. `line` is how many florins the run asks for
+     (version 1 fixed it at 2,400), `going` is what rival benches charge on a bill for every 100 lent, and `shock` is how far
+     exchange rates moved by the time the bills came home (de Roover: "the instability of the exchange rates made his profit
+     uncertain and could even change this profit into a loss"). With no year given, simulate plays version 1 exactly. */
+  const YEAR0 = { line: 2400, going: 20, shock: 0 };
+  const YEARS = { line: [1600, 1800, 2000, 2200, 2400, 2600], going: [16, 17, 18, 19, 20, 21, 22, 23, 24], shock: [-4, -3, -2, -1, 0, 1, 2, 3, 4] };
+  // a year from a seed: rng is any function returning [0, 1)
+  function yearFrom(rng) { const p = (a) => a[Math.floor(rng() * a.length)]; return { line: p(YEARS.line), going: p(YEARS.going), shock: p(YEARS.shock), pace: 560 + Math.floor(rng() * 9) * 50 }; }
+  // turn 4, the bill: merchants accept any rate up to the going rate; each point above it sends one in eight to a rival bench
+  const accepting = (rate, going) => (rate <= going ? 1 : Math.max(0, 1 - (rate - going) / 8));
   function simulate(choices) {
+    const Y = Object.assign({}, YEAR0, choices && choices._year);
+    const rate = choices && choices.rate != null && isFinite(choices.rate) ? Math.max(0, Math.min(30, Math.round(+choices.rate))) : Y.going;
     const ch = {}; TURN_IDS.forEach((id) => { if (choices && choices[id] != null) ch[id] = keyOf(choices[id]); });
     let s = { V: N.family, M: 0, K: 0, O: 0, failed: '' };
     const snap = (ev) => Object.assign({}, s, { W: s.V + s.M + s.K - s.O, ev: ev || {} });
@@ -44,9 +56,12 @@
         ev.K = Math.round(N.share[c] * base / 10) * 10; ev.gifts = Math.round(ev.K * N.giftRate * N.giftYears);
         s.V -= ev.K; s.K += ev.K; s.V += ev.gifts;
       }
-      if (id === 't4') { ev.M = s.M; ev.earned = Math.round(s.M * N.earn[c]); ev.full = Math.round(s.M * N.earn.exchange); s.V += ev.earned; }
+      if (id === 't4') { ev.M = s.M; ev.full = Math.round(s.M * N.earn.exchange);
+        if (c === 'exchange') { ev.rate = rate; ev.going = Y.going; ev.shock = Y.shock; ev.accept = accepting(rate, Y.going); ev.earned = Math.round(s.M * ev.accept * (rate + Y.shock) / 100); }
+        else ev.earned = Math.round(s.M * N.earn[c]);
+        s.V += ev.earned; }
       if (id === 't5') {
-        const D = c === 'bar' ? s.O : N.line; ev.D = D; ev.Vbefore = s.V; ev.Wbefore = s.V + s.M + s.K - s.O;
+        const D = c === 'bar' ? s.O : Y.line; ev.D = D; ev.Vbefore = s.V; ev.Wbefore = s.V + s.M + s.K - s.O;
         if (s.V >= D) { ev.run = 'paid'; s.V -= D; s.O -= D; }
         else if (c === 'pay') { ev.run = 'dry'; ev.paid = s.V; s.O -= s.V; s.V = 0; s.failed = 'run'; }
         else {
@@ -85,7 +100,7 @@
       if (V >= N.claim) { V -= N.claim; steps.push({ type: 'pay', who: i, amount: N.claim, V, M }); i++; continue; }
       if ((e.run === 'sold' || e.run === 'soldout') && !sold && e.sold > 0) { sold = true; M -= e.sold; V += cashFromSale; steps.push({ type: 'sell', sold: e.sold, cash: cashFromSale, V, M }); continue; }
       // the vault cannot pay the next depositor in full and nothing is left to sell: pay what is left, close the bench
-      if (V > 0) steps.push({ type: 'pay', who: i, amount: V, V: 0, M, partial: true }), V = 0, i++;
+      if (V > 0) steps.push({ type: 'pay', who: i, amount: V, V: 0, M, partial: true }), V = 0;   // the next in line gets what is left, not all he is owed
       steps.push({ type: 'close', unpaid: n - i, V, M }); break;
     }
     const paid = steps.filter((s) => s.type === 'pay').reduce((a, s) => a + s.amount, 0);
@@ -140,7 +155,7 @@
       idea: 'Lenders want rent for their money, so when the Church banned interest, bankers kept charging it inside the exchange rate on a bill.',
       unit: 'Unit 2, Renting Money, where you see why borrowing costs what it does and why people called it a sin.' },
     t5: { title: 'The Line at Your Door', label: 'The line at your door', place: 'Florence, a few years later', year: 1345,
-      body: '<p>A rumor sweeps Florence that King Edward will not repay his Florentine bankers. Depositors who left 2,400 florins with you line up at your bench to take them out.</p>',
+      body: '<p>A rumor sweeps Florence that King Edward will not repay his Florentine bankers. Depositors begin to line up at your bench to take their money out, and nobody knows how many will come.</p>',
       legend: 'What do you do?',
       act: 'Pay each depositor by dragging gold from your vault to them, or bar the door.',
       opts: { pay: 'Open the vault and pay everyone in line', sell: 'Pay everyone, and if the coins run out, sell your loans to merchants for half their value',
@@ -171,7 +186,8 @@
         free: 'You have no loans to merchants, so lending for free costs you nothing this time.' }[c];
       return {
         open: 'Your neighbors call you a usurer, and the priest will not give you communion until you make amends. You hand the interest back and earn nothing.',
-        exchange: `Each merchant takes florins here and repays your partner in Bruges in Flemish money, at exchange rates that favor you on the trip there and back. The Church treats it as trading currencies, not lending, and you collect ${flo(e.earned)}.`,
+        exchange: e.earned > 0 ? `Each merchant takes florins here and repays your partner in Bruges in Flemish money, at exchange rates that favor you on the trip there and back. The Church treats it as trading currencies, not lending, and you collect ${flo(e.earned)}.`
+          : `Each merchant takes florins here and repays your partner in Bruges in Flemish money, but the exchange rates move against you before the bills come home, and you ${e.earned < 0 ? 'lose ' + flo(-e.earned) : 'earn nothing'}.`,
         gift: `Some merchants give generously, and some give nothing. You collect ${flo(e.earned)}, half of what your loans could have earned.`,
         free: 'The preachers praise you from the pulpit, and your loans earn nothing.' }[c];
     }
@@ -185,6 +201,12 @@
     if (st.failed === 'default') out.push('Your bank now owes more than it owns, and it fails, like the Peruzzi in 1343 and the Bardi in 1346.');
     else if (!st.failed) out.push(`Your bank survives, worth ${flo(st.W)}.`);
     return out.join(' ');
+  }
+  // Turn 4 on the table: what the student asked on the bill, what rival benches asked this year, and how the exchange moved.
+  function billNote(e) {
+    if (e.choice !== 'exchange' || e.rate == null) return '';
+    const lost = Math.round((1 - e.accept) * 8), mv = e.shock === 0 ? 'The exchange rates did not move while the bills travelled.' : `The exchange rates moved ${Math.abs(e.shock)} ${e.shock > 0 ? 'in your favor' : 'against you'} for every 100 while the bills travelled.`;
+    return `You asked ${e.rate} for every 100. Rival benches asked ${e.going} this year, ${e.rate > e.going ? (lost >= 8 ? 'so every merchant took his business to them.' : `so ${lost} merchant${lost === 1 ? '' : 's'} in 8 took their business to them.`) : e.rate < e.going ? `so you left ${e.going - e.rate} for every 100 on the table.` : 'so every merchant stayed.'} ${mv}`;
   }
   // Plain-text ledger (the tests read it; the table draws ledgerRows in a book hand).
   function ledger(st, prev, caption, k) {
@@ -211,7 +233,7 @@
   // The safe-path line (version 1 review fix): a bank that lent nothing to merchants and survived sees what a modest loan book earns.
   function safeLine(ch, sim) {
     if (sim.failed || keyOf(ch.t2) !== 'none') return '';
-    const alt = simulate(Object.assign({}, ch, { t2: 'l1000', t4: 'exchange' })), a5 = alt.states[5];
+    const alt = simulate(Object.assign({}, ch, { t2: 'l1000', t4: 'exchange', rate: null })), a5 = alt.states[5];
     if (!alt.failed && a5.ev.run === 'paid' && alt.W > sim.W) return `Keeping every deposit in the vault made your bank safe, but the deposits earned nothing. Had you lent 1,000 florins of them to merchants and charged through the exchange rate, with every other choice the same, your bank would have ended worth ${flo(alt.W)} and still paid the line from its vault.`;
     return '';
   }
@@ -273,7 +295,7 @@
     note: { title: 'Your Note', label: 'Your note', minWords: 25, receiptHeading: 'Note: the decision that settled my bank’s fate',
       prompt: 'Which of your decisions settled your bank’s fate, and why? Then pick one stop on the paycheck’s trip in Follow One Paycheck (the credit union, the retirement fund or the grocery chain selling bonds) and say how it faces the same decision today.' },
     // For the table and the tests.
-    simulate, score, runDamage, runScript, kingOptions, lendOptions, ledgerRows, chronicle, fateOf, safeLine,
+    simulate, score, runDamage, runScript, billNote, yearFrom, YEARS, YEAR0, accepting, kingOptions, lendOptions, ledgerRows, chronicle, fateOf, safeLine,
     N, OPT, TURN_IDS, TURNS, storyHtml, consequence, ledger, keyOf, fl, flo,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -33,16 +33,31 @@
      (version 1 fixed it at 2,400), `going` is what rival benches charge on a bill for every 100 lent, and `shock` is how far
      exchange rates moved by the time the bills came home (de Roover: "the instability of the exchange rates made his profit
      uncertain and could even change this profit into a loss"). With no year given, simulate plays version 1 exactly. */
-  const YEAR0 = { line: 2400, going: 20, shock: 0 };
-  const YEARS = { line: [1600, 1800, 2000, 2200, 2400, 2600], going: [16, 17, 18, 19, 20, 21, 22, 23, 24], shock: [-4, -3, -2, -1, 0, 1, 2, 3, 4] };
+  // Version 3 adds `vanish`: whether the hooded dealer in alum (a borrower in the vault chapter) disappears with his loan.
+  const YEAR0 = { line: 2400, going: 20, shock: 0, vanish: false };
+  const YEARS = { line: [1600, 1800, 2000, 2200, 2400, 2600], going: [16, 17, 18, 19, 20, 21, 22, 23, 24], shock: [-4, -3, -2, -1, 0, 1, 2, 3, 4], vanish: [false, true] };
   // a year from a seed: rng is any function returning [0, 1)
-  function yearFrom(rng) { const p = (a) => a[Math.floor(rng() * a.length)]; return { line: p(YEARS.line), going: p(YEARS.going), shock: p(YEARS.shock), pace: 560 + Math.floor(rng() * 9) * 50 }; }
+  function yearFrom(rng) { const p = (a) => a[Math.floor(rng() * a.length)]; return { line: p(YEARS.line), going: p(YEARS.going), shock: p(YEARS.shock), pace: 560 + Math.floor(rng() * 9) * 50, vanish: rng() < 0.5 }; }
+  /* Version 3: in the vault chapter, borrowers come to the bench one at a time. Their loans add up to what version 1 offered
+     (all four = 3,600, the thinnest vault). The hooded dealer pays half again as much, because no one else will lend to him,
+     and in some years he disappears with the money. choices.lend (a list of ids) overrides the t2 option when given; the
+     receipt records the t2 option nearest the total (bucketOf), so version 1's receipt contract is unchanged. */
+  const PITCHES = [
+    { id: 'nun', amount: 600, risky: false, who: 'Sister Agnese', role: 'cellarer of the convent', want: 'brewing kettles' },
+    { id: 'silk', amount: 1200, risky: false, who: 'Monna Tessa', role: 'silk weaver', want: 'raw silk from Lucca' },
+    { id: 'alum', amount: 800, risky: true, who: 'Ser Guccio', role: 'a hooded man who says he deals in alum', want: 'a cargo of alum' },
+    { id: 'wool', amount: 1000, risky: false, who: 'Ser Lapo', role: 'wool merchant', want: 'English wool and dye' },
+  ];
+  const RISK_PREMIUM = 1.5;
+  const lentOf = (ids) => PITCHES.filter((p) => (ids || []).indexOf(p.id) >= 0).reduce((a, p) => a + p.amount, 0);
+  const bucketOf = (amount) => OPT.t2.reduce((best, k) => (Math.abs(N.lend[k] - amount) < Math.abs(N.lend[best] - amount) ? k : best), 'none');
   // turn 4, the bill: merchants accept any rate up to the going rate; each point above it sends one in eight to a rival bench
   const accepting = (rate, going) => (rate <= going ? 1 : Math.max(0, 1 - (rate - going) / 8));
   function simulate(choices) {
     const Y = Object.assign({}, YEAR0, choices && choices._year);
     const rate = choices && choices.rate != null && isFinite(choices.rate) ? Math.max(0, Math.min(30, Math.round(+choices.rate))) : Y.going;
     const ch = {}; TURN_IDS.forEach((id) => { if (choices && choices[id] != null) ch[id] = keyOf(choices[id]); });
+    const lend = choices && Array.isArray(choices.lend) ? choices.lend.filter((x) => PITCHES.some((p) => p.id === x)) : null;
     let s = { V: N.family, M: 0, K: 0, O: 0, failed: '' };
     const snap = (ev) => Object.assign({}, s, { W: s.V + s.M + s.K - s.O, ev: ev || {} });
     const states = [snap()];
@@ -50,15 +65,22 @@
       const c = ch[id]; if (!c || OPT[id].indexOf(c) < 0) break;
       const ev = { choice: c };
       if (id === 't1') { ev.gain = N.gain[c]; s.V += ev.gain; }
-      if (id === 't2') { s.V += N.deposits; s.O += N.deposits; ev.lent = N.lend[c]; s.V -= ev.lent; s.M += ev.lent; }
+      if (id === 't2') { s.V += N.deposits; s.O += N.deposits;
+        if (Array.isArray(lend)) { ev.lend = lend.slice(); ev.lent = lentOf(lend); s.Mrisky = lend.indexOf('alum') >= 0 ? PITCHES[2].amount : 0; } else { ev.lent = N.lend[c]; s.Mrisky = 0; }
+        s.V -= ev.lent; s.M += ev.lent; }
       if (id === 't3') {
         const base = Math.floor(s.V / 100) * 100;
         ev.K = Math.round(N.share[c] * base / 10) * 10; ev.gifts = Math.round(ev.K * N.giftRate * N.giftYears);
         s.V -= ev.K; s.K += ev.K; s.V += ev.gifts;
       }
-      if (id === 't4') { ev.M = s.M; ev.full = Math.round(s.M * N.earn.exchange);
-        if (c === 'exchange') { ev.rate = rate; ev.going = Y.going; ev.shock = Y.shock; ev.accept = accepting(rate, Y.going); ev.earned = Math.round(s.M * ev.accept * (rate + Y.shock) / 100); }
-        else ev.earned = Math.round(s.M * N.earn[c]);
+      if (id === 't4') {
+        // the risky borrower comes due first: in a `vanish` year he is gone, and his loan with him
+        ev.vanished = !!(Y.vanish && s.Mrisky); if (ev.vanished) { ev.lostRisky = s.Mrisky; s.M -= s.Mrisky; s.Mrisky = 0; }
+        ev.M = s.M; ev.full = Math.round(s.M * N.earn.exchange);
+        const book = s.M - s.Mrisky + s.Mrisky * RISK_PREMIUM;   // what the loans pay on, the risky one at half again
+        if (c === 'exchange') { ev.rate = rate; ev.going = Y.going; ev.shock = Y.shock; ev.accept = accepting(rate, Y.going); ev.earned = Math.round(book * ev.accept * (rate + Y.shock) / 100); }
+        else ev.earned = Math.round(book * N.earn[c]);
+        ev.riskyEarned = s.Mrisky ? Math.round(ev.earned * s.Mrisky * RISK_PREMIUM / book) : 0;
         s.V += ev.earned; }
       if (id === 't5') {
         const D = c === 'bar' ? s.O : Y.line; ev.D = D; ev.Vbefore = s.V; ev.Wbefore = s.V + s.M + s.K - s.O;
@@ -172,6 +194,9 @@
       bill: 'He pays you here, your partner pays his supplier in Bruges in Flemish money, and no coin crosses the Alps. The exchange rate you set between the two currencies leaves you 40 florins ahead.',
       ship: 'The gold reaches Bruges after weeks on the road. You charged him 40 florins, but the guards and mules cost you 30 of them.',
       refuse: 'He takes his business to the Bardi, one of the two biggest banking companies in Florence, and they write him a bill of exchange. You earn nothing.' }[c];
+    if (id === 't2' && Array.isArray(e.lend)) return e.lend.length
+      ? `You lend ${flo(e.lent)} to ${e.lend.length === 1 ? 'one borrower' : e.lend.length + ' borrowers'}, who promise to repay more than they borrowed. Your depositors can ask for their 4,000 florins on any day, so the ledger counts them as money you owe.`
+      : 'Every coin sits safe in your vault, and none of it earns anything. Your depositors can ask for their 4,000 florins on any day, so the ledger counts them as money you owe.';
     if (id === 't2') return c === 'none'
       ? 'Every coin sits safe in your vault, and none of it earns anything. Your depositors can ask for their 4,000 florins on any day, so the ledger counts them as money you owe.'
       : `Cloth merchants borrow ${flo(e.lent)} to buy wool and dye, and promise to pay back more than they borrowed. Your depositors can ask for their 4,000 florins on any day, so the ledger counts them as money you owe.`;
@@ -229,6 +254,15 @@
       gift: 'The banker asked the merchants for gifts, and some gave and some did not.',
       free: 'The banker lent for free, as the preachers urged.' },
   };
+  // the vault chapter, written from the borrowers the banker accepted (version 3)
+  function chronLend(e) {
+    if (!Array.isArray(e.lend)) return '';
+    const who = { nun: 'the convent, for brewing kettles', silk: 'a silk weaver', alum: 'a hooded dealer in alum nobody knew', wool: 'Ser Lapo the wool merchant' };
+    const names = PITCHES.filter((p) => e.lend.indexOf(p.id) >= 0).map((p) => who[p.id]);
+    if (!names.length) return CHRON.t2.none;
+    const list = names.length === 1 ? names[0] : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+    return `Shopkeepers, wool workers and a convent left 4,000 florins with the bank, and the banker lent ${flo(e.lent)} of them to ${list}.`;
+  }
   function fateOf(sim) { return sim.failed === 'run' ? 'run' : sim.failed === 'default' ? 'default' : 'survived'; }
   // The safe-path line (version 1 review fix): a bank that lent nothing to merchants and survived sees what a modest loan book earns.
   function safeLine(ch, sim) {
@@ -250,8 +284,8 @@
       run: 'The king stopped paying, but the bank had already closed.',
       default: 'The king stopped paying, and the bank owed more than it owned, and failed.' };
     const items = [
-      { id: 't1', text: CHRON.t1[keyOf(ch.t1)] }, { id: 't2', text: CHRON.t2[keyOf(ch.t2)] }, { id: 't3', text: CHRON.t3(sim.states[3].ev) },
-      { id: 't4', text: CHRON.t4[keyOf(ch.t4)] }, { id: 't5', text: run + ' ' + ends[fate] },
+      { id: 't1', text: CHRON.t1[keyOf(ch.t1)] }, { id: 't2', text: chronLend(sim.states[2].ev) || CHRON.t2[keyOf(ch.t2)] }, { id: 't3', text: CHRON.t3(sim.states[3].ev) },
+      { id: 't4', text: CHRON.t4[keyOf(ch.t4)] + (sim.states[4].ev.vanished ? ' The hooded dealer in alum vanished with his loan.' : '') }, { id: 't5', text: run + ' ' + ends[fate] },
     ].map((x) => Object.assign(x, { short: TURNS[x.id].short[keyOf(ch[x.id])], idea: TURNS[x.id].idea, unit: 'This idea comes back in ' + TURNS[x.id].unit }));
     return { fate, head: HEADS[fate] || `Your bank came through the 1340s, worth ${flo(end.W)}.`, W: end.W, items, safe: safeLine(ch, sim),
       real: 'The Peruzzi company went bankrupt in 1343, and the Bardi company failed in 1346. King Edward’s unpaid war loans helped bring both down, along with a wider crisis in Florence. In Italian a failed bank was a <i>banca rotta</i>, a broken bench, which gave English the word <i>bankrupt</i>.' };
@@ -295,7 +329,7 @@
     note: { title: 'Your Note', label: 'Your note', minWords: 25, receiptHeading: 'Note: the decision that settled my bank’s fate',
       prompt: 'Which of your decisions settled your bank’s fate, and why? Then pick one stop on the paycheck’s trip in Follow One Paycheck (the credit union, the retirement fund or the grocery chain selling bonds) and say how it faces the same decision today.' },
     // For the table and the tests.
-    simulate, score, runDamage, runScript, billNote, yearFrom, YEARS, YEAR0, accepting, kingOptions, lendOptions, ledgerRows, chronicle, fateOf, safeLine,
+    simulate, score, runDamage, runScript, billNote, PITCHES, RISK_PREMIUM, lentOf, bucketOf, yearFrom, YEARS, YEAR0, accepting, kingOptions, lendOptions, ledgerRows, chronicle, fateOf, safeLine,
     N, OPT, TURN_IDS, TURNS, storyHtml, consequence, ledger, keyOf, fl, flo,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

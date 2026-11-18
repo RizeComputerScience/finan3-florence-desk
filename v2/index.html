@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Banker of Florence</title>
+<meta name="description" content="Financial Markets and Institutions, Unit 1. Run a small family bank in 1340s Florence: move the gold, set the rate on a bill, and keep your door open through a run.">
+<meta name="theme-color" content="#2E1C12">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23C79A3A' stroke='%238C6A22' stroke-width='2'/%3E%3Cpath d='M16 7v18M11 12c0 4 5 4 5 8M21 12c0 4-5 4-5 8' stroke='%232A1C14' stroke-width='2' fill='none'/%3E%3C/svg%3E">
+<link rel="preload" href="fonts/texturina.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/alegreya.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="game.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to the game</a>
+<header class="mast">
+  <p class="wordmark">The Banker of Florence<small>Financial Markets and Institutions, Unit 1</small></p>
+  <nav class="chapters" aria-label="Chapters"><ol id="chapters"></ol></nav>
+  <button class="sound" id="sound" type="button" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path id="soundWaves" d="M16 8.5c1.5 1 1.5 6 0 7M18.5 6c3 2.5 3 9.5 0 12" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg><span class="label">Sound off</span></button>
+</header>
+<main id="main" tabindex="-1"></main>
+<footer>
+  <span>Your progress is saved in this browser.<span id="codeNote"></span></span>
+  <button type="button" class="linklike" id="creditsBtn">Image credits</button>
+</footer>
+<div class="sr-only" aria-live="polite" id="announce"></div>
+<dialog class="credits" id="credits" aria-labelledby="creditsTitle"><div class="leaf"></div></dialog>
+<script>window.DESK_NO_UI = true;</script>
+<script src="config.js"></script>
+<script src="map-data.js"></script>
+<script src="desk-engine.js"></script>
+<script src="game.js"></script>
+</body>
+</html>

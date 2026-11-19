@@ -541,7 +541,7 @@
     await step(`${pre}Ser Lapo pays us here in Florence: <b>1,040 florins</b>, 1,000 for his supplier and 40 for us.`, 'Take his florins');
     await tween(700, (f) => purse.setAttribute('transform', `translate(${lerp(F[0] - 36, F[0] + 70, f)} ${lerp(F[1] - 6, F[1] - 46, f)}) scale(${1 - f * 0.4})`)); Sound.play('coin');
     E('circle', { cx: F[0] + 70, cy: F[1] - 40, r: 44, fill: 'url(#glow)' }, fx); tag(F[0] + 170, F[1] - 4, '1,040 florins stay here', '#2F5E4F');
-    await step('Now I write the <b>bill</b>: a letter telling our partner in Bruges to pay the supplier Flemish money worth 1,000 florins.', 'Write the bill');
+    await step('Now I write the <b>bill</b>: a letter telling our partner in Bruges to pay the supplier 1,000 florins’ worth of Bruges’s own coin, Flemish money.', 'Write the bill');
     const bill = E('g', { transform: `translate(${F[0] - 90} ${F[1] - 40})` }, fx);
     E('rect', { x: -44, y: -30, width: 88, height: 60, fill: '#F4EAD2', stroke: '#2A1C14', 'stroke-width': 2 }, bill);
     [[-34, -16, 68], [-34, -6, 60], [-34, 4, 64], [-34, 14, 40]].forEach(([x, y, w]) => E('path', { d: `M${x} ${y}h${w}`, stroke: '#5A4636', 'stroke-width': 2 }, bill));
@@ -689,34 +689,35 @@
     say(note ? `${head}${note} We collect <b>${flo(ev.earned)}</b>.` : `${head}${C.consequence('t4', st, prev)}`);
     await nextButton(3);
   }
-  // A real round trip of bills (Munro's example from the Datini archives, 1399 to 1400): lend in Bruges, collect in Barcelona's
-  // coin, buy a bill back at that day's rate, collect more than you lent. One tap per leg, the arithmetic shown small.
+  // A round trip of bills from our own bench, on the Florence to Bruges road of chapter I: pay out florins for a bill on Bruges,
+  // collect groats there, buy a bill home at that day's rate, collect more florins than we paid out. Modelled on a real trade of
+  // 1399 to 1400 (Munro, FACTS.md) with the figures simplified to round rates and the same gain of about 4 for every 100.
+  // One tap per leg, one line of arithmetic per leg.
   async function roundTrip() {
-    const BAR = geo(2.17, 41.39), B = MAP.bruges;
-    const route = [B, geo(2.35, 48.86), geo(4.83, 45.76), geo(3.88, 43.61), geo(2.9, 42.7), BAR];
-    const Mp = drawChart($('#stage'), null, { view: [130, 150, 900, 576], road: route, noRobbers: true, cities: [[BAR, 'Barcelona', 0, -22, 'middle']] });
-    const fx = Mp.fx, road = Mp.road, L = road.getTotalLength();
+    const Mp = drawChart($('#stage'), null, { noRobbers: true });
+    const fx = Mp.fx, road = Mp.road, L = road.getTotalLength(), F = MAP.florence, B = MAP.bruges;
     const at = (f) => { const q = road.getPointAtLength(f * L); return [q.x, q.y]; };
     const sums = document.createElement('div'); sums.className = 'sums leaf'; sums.setAttribute('aria-label', 'The arithmetic'); $('#stage').appendChild(sums);
     const line = (html) => { const p = document.createElement('p'); p.innerHTML = html; sums.appendChild(p); };
     const step = async (text, button) => { say(text); await choose([{ text: button, cls: 'go' }]); clearChoices(); };
-    const coins = (p, n, kind) => { const g = E('g', {}, fx); for (let i = 0; i < n; i++) { const s = E('g', { transform: `translate(${p[0] - (n - 1) * 9 + i * 18} ${p[1]})` }, g); drawStack(s, 100, kind); } return g; };
+    const coins = (p, n, amount, kind) => { const g = E('g', {}, fx); for (let i = 0; i < n; i++) { const s = E('g', { transform: `translate(${p[0] - (n - 1) * 9 + i * 18} ${p[1]})` }, g); drawStack(s, amount, kind); } return g; };
     const paper = E('g', { opacity: 0 }, fx); E('rect', { x: -30, y: -20, width: 60, height: 40, fill: '#F4EAD2', stroke: '#2A1C14', 'stroke-width': 2 }, paper); E('path', { d: 'M-22-8h44M-22 2h38M-22 12h26', stroke: '#5A4636', 'stroke-width': 2 }, paper); E('circle', { cx: 20, cy: 10, r: 6, fill: '#A8301C' }, paper);
     const put = (p) => paper.setAttribute('transform', `translate(${p[0].toFixed(1)} ${p[1].toFixed(1)})`);
-    await step('This is how bankers were paid without charging interest. Here is a real one, from a merchant’s account books: in Bruges, in December 1399, Jacopo Goscio lends <b>600 écus</b> of Flemish money.', 'Lend 600 écus in Bruges');
-    let g1 = coins([B[0] + 40, B[1] + 50], 6, 'gold'); line('Lent in Bruges: <b>600 écus</b>'); Sound.play('coin');
-    await step('The borrower gives him a <b>bill on Barcelona</b>: there, the borrower’s partner must pay 10 shillings 5 pence of Barcelona money for every écu.', 'Send the bill to Barcelona');
+    const home = [F[0] - 46, F[1] + 4], there = [B[0] + 58, B[1] + 44];
+    await step('This is how bankers got paid without charging interest. A merchant here needs money now, so we pay him <b>100 florins</b> for his bill.', 'Pay him 100 florins');
+    const g1 = coins(home, 1, 100, 'gold'); line('Paid out in Florence: <b>100 florins</b>'); Sound.play('coin');
+    await step('His bill says: in three months, pay our partner in Bruges in that city’s own coin, the groat, at <b>10.4 groats for each florin</b>.', 'Send the bill to Bruges');
     paper.setAttribute('opacity', 1); g1.remove(); await tween(1600, (f) => put(at(f))); Sound.play('seal');
-    line('600 × 10s 5d = <b>6,250 shillings</b> of Barcelona');
-    await step('Goscio’s partner in Barcelona collects <b>6,250 shillings</b> in Barcelona’s own coin.', 'Collect in Barcelona');
-    const g2 = coins([BAR[0] + 110, BAR[1] + 18], 6, 'silver'); Sound.play('coin');
-    await step('He spends it on a <b>bill back to Bruges</b>, at that day’s rate in Barcelona: 10 shillings for every écu. Nobody knew that rate back in December.', 'Buy a bill home');
-    g2.remove(); await tween(1600, (f) => put(at(1 - f))); Sound.play('seal');
-    line('6,250 ÷ 10s = <b>625 écus</b>');
-    await step('In April 1400 the bill is paid in Bruges.', 'Collect in Bruges');
-    paper.setAttribute('opacity', 0); coins([B[0] + 40, B[1] + 50], 6, 'gold'); Sound.play('coin');
-    line('Gain: <b>25 écus</b>, about 4 for every 100, in four months');
-    say('625 écus for 600: the gain sits in the gap between 10s 5d going out and 10s 0d coming back. No paper says “interest”, so the Church treats it as trading money. The catch: had the rate in Barcelona moved the other way, he could have lost.');
+    line('100 × 10.4 = <b>1,040 groats</b> in Bruges');
+    await step('Three months later our partner in Bruges collects the <b>1,040 groats</b>.', 'Collect in Bruges');
+    paper.setAttribute('opacity', 0); const g2 = coins(there, 5, 60, 'silver'); Sound.play('coin');
+    await step('He uses them to buy a bill back to Florence at that day’s rate in Bruges: <b>10 groats for each florin</b>. Nobody knew that rate when we paid out the 100.', 'Buy a bill home');
+    g2.remove(); paper.setAttribute('opacity', 1); await tween(1600, (f) => put(at(1 - f))); Sound.play('seal');
+    line('1,040 ÷ 10 = <b>104 florins</b> in Florence');
+    await step('Three months later that bill is paid here in Florence.', 'Collect in Florence');
+    paper.setAttribute('opacity', 0); coins(home, 1, 104, 'gold'); Sound.play('coin');
+    line('104 − 100 = <b>4 florins</b> gained');
+    say('We paid out 100 and got back 104, and no paper said “interest”: the gain sat in the gap between 10.4 and 10. The catch that satisfied the Church’s scholars: had the rate in Bruges moved the other way, we would have come home with less than 100.');
     await choose([{ text: 'Now choose how we get paid', cls: 'go' }]);
   }
   // the bet on the bill: what to ask for every 100 lent, before you know what rival benches ask this year
@@ -1081,7 +1082,7 @@
 
   // ---------------- credits ----------------
   $('#creditsBtn').addEventListener('click', () => {
-    const d = $('#credits'); d.querySelector('.leaf').innerHTML = `<h2 id="creditsTitle" style="font-size:28px">Image Credits</h2><ul>${CREDITS.map((c) => `<li><b>${esc(c[0])}.</b> ${esc(c[1])}. ${esc(c[2])}. <a href="${c[3]}" target="_blank" rel="noopener">Source<span class="sr-only"> (opens in a new tab)</span></a></li>`).join('')}</ul><p style="font-size:15px">Typefaces: Grenze Gotisch, Texturina and Alegreya, SIL Open Font License. Coastlines: Natural Earth, public domain. Drawings of the table, the people and the map marks are made for this game.</p><div class="actions"><button class="btn" type="button" id="closeCr">Close</button></div>`;
+    const d = $('#credits'); d.querySelector('.leaf').innerHTML = `<h2 id="creditsTitle" style="font-size:28px">Image Credits</h2><ul>${CREDITS.map((c) => `<li><b>${esc(c[0])}.</b> ${esc(c[1])}. ${esc(c[2])}. <a href="${c[3]}" target="_blank" rel="noopener">Source<span class="sr-only"> (opens in a new tab)</span></a></li>`).join('')}</ul><p style="font-size:15px">Typefaces: Grenze Gotisch, Texturina and Alegreya, SIL Open Font License. Coastlines: Natural Earth, public domain. Drawings of the table, the people and the map marks are made for this game.</p><p style="font-size:15px">Sources: the round trip of bills in chapter IV is modelled on a real trade of 1399 to 1400 recorded by the historian John Munro, with the figures simplified.</p><div class="actions"><button class="btn" type="button" id="closeCr">Close</button></div>`;
     d.showModal(); $('#closeCr').addEventListener('click', () => d.close()); $('#closeCr').focus();
   });
 

@@ -261,8 +261,9 @@
   };
   // a smooth path through points (Catmull-Rom as cubic Béziers)
   function smooth(pts) { let d = `M${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`; for (let i = 0; i < pts.length - 1; i++) { const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2; d += `C${(p1[0] + (p2[0] - p0[0]) / 6).toFixed(1)} ${(p1[1] + (p2[1] - p0[1]) / 6).toFixed(1)} ${(p2[0] - (p3[0] - p1[0]) / 6).toFixed(1)} ${(p2[1] - (p3[1] - p1[1]) / 6).toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`; } return d; }
-  function drawChart(st, keep) {
-    const vb = MAP.view.wide; st.innerHTML = ''; st.classList.remove('street'); st.classList.add('chartstage');
+  function drawChart(st, keep, opts) {
+    opts = opts || {};
+    const vb = opts.view || MAP.view.wide; st.innerHTML = ''; st.classList.remove('street', 'run'); st.classList.add('chartstage'); setClerk('over');
     if (keep) st.appendChild(keep);
     const holder = document.createElement('div'); holder.className = 'chart'; st.appendChild(holder);
     const svg = E('svg', { viewBox: vb.join(' '), role: 'img', 'aria-label': 'A sea chart of western Europe. Florence is in Italy at the bottom right; Bruges is in Flanders at the top left; the road between them crosses the Alps.' }, holder);
@@ -281,19 +282,21 @@
     MAP.roses.forEach(([cx, cy]) => { const g = E('g', { transform: `translate(${cx} ${cy})` }, svg); E('circle', { r: 20, fill: '#EDE0C4', stroke: '#2A1C14', 'stroke-width': 1.2 }, g); for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, l = i % 2 ? 15 : 26; E('path', { d: `M0 0L${(Math.cos(a - 0.25) * 6).toFixed(1)} ${(Math.sin(a - 0.25) * 6).toFixed(1)}L${(Math.cos(a) * l).toFixed(1)} ${(Math.sin(a) * l).toFixed(1)}Z`, fill: i % 2 ? '#3D7563' : '#A8301C' }, g); } E('circle', { r: 3, fill: '#C79A3A' }, g); });
     // the Alps: a brown serrated ridge, the way the chart makers drew mountains
     const al = E('g', {}, svg); for (let i = 0; i < MAP.alps.length - 1; i++) { const [a, b] = [MAP.alps[i], MAP.alps[i + 1]]; for (let k = 0; k < 3; k++) { const x = lerp(a[0], b[0], k / 3), y = lerp(a[1], b[1], k / 3); E('path', { d: `M${(x - 9).toFixed(1)} ${(y + 6).toFixed(1)}L${x.toFixed(1)} ${(y - 12).toFixed(1)}L${(x + 9).toFixed(1)} ${(y + 6).toFixed(1)}Z`, fill: '#7A4A22', stroke: '#2A1C14', 'stroke-width': 1 }, al); } }
-    E('path', { d: smooth(MAP.road), fill: 'none', stroke: '#EDE0C4', 'stroke-width': 9, 'stroke-linecap': 'round', opacity: 0.8 }, svg);
-    const road = E('path', { d: smooth(MAP.road), fill: 'none', stroke: '#A8301C', 'stroke-width': 3.6, 'stroke-dasharray': '9 7', 'stroke-linecap': 'round' }, svg);
+    const roadPts = opts.road || MAP.road;
+    E('path', { d: smooth(roadPts), fill: 'none', stroke: '#EDE0C4', 'stroke-width': 9, 'stroke-linecap': 'round', opacity: 0.8 }, svg);
+    const road = E('path', { d: smooth(roadPts), fill: 'none', stroke: '#A8301C', 'stroke-width': 3.6, 'stroke-dasharray': '9 7', 'stroke-linecap': 'round' }, svg);
     const lab = (x, y, t, size, col, anchor) => { const tx = E('text', { x, y, 'text-anchor': anchor || 'middle', 'font-family': 'Texturina, Georgia, serif', 'font-weight': 600, 'font-size': size || 28, fill: col || '#A8301C', stroke: '#EDE0C4', 'stroke-width': 5, 'paint-order': 'stroke' }, svg); tx.textContent = t; return tx; };
     const city = (p) => { E('circle', { cx: p[0], cy: p[1], r: 10, fill: 'url(#gold)', stroke: '#2A1C14', 'stroke-width': 2.4 }, svg); };
     city(MAP.florence); city(MAP.bruges);
     lab(MAP.florence[0] + 16, MAP.florence[1] + 36, 'Florence', 28, '#A8301C', 'start'); lab(MAP.bruges[0] - 14, MAP.bruges[1] - 18, 'Bruges', 28, '#A8301C', 'end');
     lab(geo(12.6, 47.7)[0], geo(12.6, 47.7)[1], 'the Alps', 22, '#2A1C14');
     // robbers wait in the pass
-    const robbers = E('g', {}, svg), rp = geo(8.1, 46.25);
+    const robbers = E('g', opts.noRobbers ? { display: 'none' } : {}, svg), rp = geo(8.1, 46.25);
     [[0, 0], [22, -12]].forEach(([dx, dy]) => { const x = rp[0] + dx - 30, y = rp[1] + dy; E('circle', { cx: x, cy: y - 15, r: 5.5, fill: '#2A1C14' }, robbers); E('path', { d: `M${x - 8} ${y + 6}L${x} ${y - 9}L${x + 8} ${y + 6}Z`, fill: '#2A1C14' }, robbers); E('path', { d: `M${x + 7} ${y - 6}l11 -12`, stroke: '#2A1C14', 'stroke-width': 2.2 }, robbers); });
-    lab(rp[0] - 34, rp[1] + 30, 'robbers', 18, '#2A1C14');
+    if (!opts.noRobbers) lab(rp[0] - 34, rp[1] + 30, 'robbers', 18, '#2A1C14');
+    if (opts.cities) opts.cities.forEach(([p, t, dx, dy, anchor]) => { city(p); lab(p[0] + (dx || 0), p[1] + (dy || 0), t, 28, '#A8301C', anchor || 'middle'); });
     const fx = E('g', {}, svg);
-    return { svg, road, robbers, fx, vb };
+    return { svg, road, robbers, fx, vb, lab, city };
   }
   // a stack of florins, drawn at (0,0) = the middle of its bottom coin; ten coins to the 100
   function drawStack(g, amount, kind) {
@@ -401,9 +404,9 @@
     main.innerHTML = `${S.practice ? '<p class="banner"><b>Another year.</b> Not graded; your receipt is unchanged.</p>' : ''}<section class="play">
       <div class="scene">
         <header class="scenehead"><p class="rubric">${esc(String(T[id].year === 1345 ? 'A few years later' : T[id].year))}</p><h2 id="chT">${NUM[k]}. ${esc(T[id].title)}</h2></header>
-        <div class="stage" id="stage"></div>
+        <div class="stagewrap" id="stagewrap" data-clerk="side"><div class="stage" id="stage"></div>
+          <div class="clerk" id="clerk"><div class="clerkface" title="Iacopo, your clerk">${clerkFace()}</div><div class="bubble"><p class="who">Iacopo, your clerk</p><p class="say" id="say" aria-live="polite"></p></div></div></div>
         <div class="choices" id="choices" role="group" aria-labelledby="chT"></div>
-        <div class="clerk" id="clerk"><div class="clerkface">${clerkFace()}</div><p class="say" id="say" aria-live="polite"></p></div>
       </div>
       <aside class="side" aria-label="Your bank">
         <details class="ledger2" id="ledger"${phone() ? '' : ' open'}></details>
@@ -414,7 +417,11 @@
     CHAPTER[id]({ id, k, ch, sim, before: sim.states[k], done });
   }
   // the clerk speaks: what is at stake before a choice, what happened after it
-  const say = (html) => { const s = $('#say'); if (!s) return; s.innerHTML = html; s.classList.remove('fresh'); void s.offsetWidth; s.classList.add('fresh'); };
+  // The clerk stands beside the visitor (or over the chart and the street) and speaks in type at least as large as the
+  // visitor's own; a new line arrives just before the buttons wake, so it is read first.
+  let saidAt = 0;
+  const say = (html) => { const s = $('#say'); if (!s) return; s.innerHTML = html; s.parentNode.classList.remove('fresh'); void s.offsetWidth; s.parentNode.classList.add('fresh'); saidAt = performance.now(); };
+  const setClerk = (mode) => { const w = $('#stagewrap'); if (w) w.dataset.clerk = mode; };
   // choices: big buttons under the scene. Each has a name and, where it helps, what it risks and pays.
   function choose(list) {
     const box = $('#choices'); box.innerHTML = ''; box.className = 'choices' + (list.length > 2 ? ' many' : '');
@@ -423,7 +430,11 @@
         b.innerHTML = `<b>${esc(c.text)}</b>${c.sub ? `<span>${esc(c.sub)}</span>` : ''}`; if (c.disabled) b.disabled = true;
         b.addEventListener('click', () => { box.querySelectorAll('button').forEach((x) => { x.disabled = true; }); res(c.value != null ? c.value : i); });
         box.appendChild(b); });
-      const first = box.querySelector('button:not([disabled])'); if (first && !phone()) first.focus({ preventScroll: true });
+      // the buttons wake a moment after the clerk's newest line, so the line is seen first
+      const hold = reduced() ? 0 : Math.max(0, saidAt + 650 - performance.now());
+      const all = [...box.querySelectorAll('button')].filter((b) => !b.disabled);
+      if (hold) { all.forEach((b) => { b.disabled = true; b.classList.add('waking'); }); setTimeout(() => { all.forEach((b) => { if (b.classList.contains('waking')) { b.disabled = false; b.classList.remove('waking'); } }); const f = box.querySelector('button:not([disabled])'); if (f && !phone()) f.focus({ preventScroll: true }); }, hold); }
+      else { const first = box.querySelector('button:not([disabled])'); if (first && !phone()) first.focus({ preventScroll: true }); }
     });
   }
   const clearChoices = () => { const b = $('#choices'); if (b) b.innerHTML = ''; };
@@ -458,7 +469,7 @@
   // ---------------- a visitor: a card that comes to the bench (swipe it, or press a choice) ----------------
   function visitor(kind, who, role, line, opts) {
     opts = opts || {};
-    const st = $('#stage'); st.classList.add('street'); st.innerHTML = '';
+    const st = $('#stage'); st.classList.add('street'); st.classList.remove('chartstage', 'run'); st.innerHTML = ''; setClerk('side');
     const card = document.createElement('article'); card.className = 'card' + (opts.small ? ' small' : ''); card.setAttribute('aria-label', `${who}, ${role}`);
     card.innerHTML = `<div class="portrait">${portrait(kind)}</div><div class="cardtext"><p class="who">${esc(who)}<span>${esc(role)}</span></p><p class="line">“${esc(line)}”</p>${opts.ask ? `<p class="ask">${esc(opts.ask)}</p>` : ''}</div>
       <span class="stamp yes">${esc(opts.yes || 'Yes')}</span><span class="stamp no">${esc(opts.no || 'No')}</span>`;
@@ -510,8 +521,39 @@
     });
     pick = await decided; clearChoices(); purse.remove();
     commitChoice('t1', pick);
-    await finishT1(Mp, false);
+    if (pick === 'bill') await billWalk(Mp, true); else { await finishT1(Mp, false); await choose([{ text: 'Show me how a bill would do it', cls: 'go' }]); const Mp2 = drawChart($('#stage'), null); await billWalk(Mp2, false); }
     await nextButton(0);
+  }
+  // A bill of exchange, one tap per step, on the chart: florins taken in Florence, a letter written, only the letter travels,
+  // the partner in Bruges pays in Flemish coin, and the gold never crosses the Alps.
+  async function billWalk(Mp, real) {
+    const fx = Mp.fx, svg = Mp.svg, F = MAP.florence, B = MAP.bruges, road = Mp.road;
+    const along = (f) => { const q = road.getPointAtLength(f * road.getTotalLength()); return [q.x, q.y]; };
+    const tag = (x, y, txt, col) => { const g = E('g', { class: 'maptag' }, fx); const w = txt.length * 9.5 + 26; E('rect', { x: -w / 2, y: -19, width: w, height: 32, rx: 4, fill: '#EDE0C4', stroke: col || '#2A1C14', 'stroke-width': 2 }, g); const t = E('text', { x: 0, y: 3, 'text-anchor': 'middle', 'font-family': 'Alegreya, serif', 'font-size': 18, 'font-weight': 700, fill: col || '#2A1C14' }, g); t.textContent = txt; g.setAttribute('transform', `translate(${x.toFixed(0)} ${y.toFixed(0)})`); return g; };
+    const step = async (line, button) => { say(line); await choose([{ text: button, cls: 'go' }]); clearChoices(); };
+    // the pieces: Ser Lapo's purse at Florence, our strongbox beside it, our partner's bench and the supplier at Bruges
+    const box = E('g', { transform: `translate(${F[0] + 70} ${F[1] - 40})` }, fx); E('rect', { x: -26, y: -16, width: 52, height: 32, rx: 4, fill: '#3B2414', stroke: '#1E120A', 'stroke-width': 2 }, box); E('rect', { x: -26, y: -16, width: 52, height: 8, fill: '#6E6A62' }, box);
+    const purse = E('g', { transform: `translate(${F[0] - 36} ${F[1] - 6})` }, fx); E('path', { d: 'M-18 0c-3-15 8-26 18-26s21 11 18 26c-2 9-34 9-36 0z', fill: '#7A4A22', stroke: '#2A1C14', 'stroke-width': 2 }, purse);
+    const bench = E('rect', { x: B[0] + 24, y: B[1] + 30, width: 50, height: 18, fill: '#3D7563', stroke: '#2A1C14', 'stroke-width': 2 }, fx);
+    const sup = E('g', { transform: `translate(${B[0] - 40} ${B[1] + 52})` }, fx); E('circle', { cx: 0, cy: -16, r: 6, fill: '#E6C29A', stroke: '#2A1C14' }, sup); E('path', { d: 'M-9 10L0-8L9 10Z', fill: '#5B4A8A', stroke: '#2A1C14' }, sup);
+    tag(B[0] - 84, B[1] + 92, 'the supplier'); tag(B[0] + 64, B[1] + 76, 'our partner');
+    const pre = real ? '' : 'Here is how a bill would have done it. ';
+    await step(`${pre}Ser Lapo pays us here in Florence: <b>1,040 florins</b>, 1,000 for his supplier and 40 for us.`, 'Take his florins');
+    await tween(700, (f) => purse.setAttribute('transform', `translate(${lerp(F[0] - 36, F[0] + 70, f)} ${lerp(F[1] - 6, F[1] - 46, f)}) scale(${1 - f * 0.4})`)); Sound.play('coin');
+    E('circle', { cx: F[0] + 70, cy: F[1] - 40, r: 44, fill: 'url(#glow)' }, fx); tag(F[0] + 170, F[1] - 4, '1,040 florins stay here', '#2F5E4F');
+    await step('Now I write the <b>bill</b>: a letter telling our partner in Bruges to pay the supplier Flemish money worth 1,000 florins.', 'Write the bill');
+    const bill = E('g', { transform: `translate(${F[0] - 90} ${F[1] - 40})` }, fx);
+    E('rect', { x: -44, y: -30, width: 88, height: 60, fill: '#F4EAD2', stroke: '#2A1C14', 'stroke-width': 2 }, bill);
+    [[-34, -16, 68], [-34, -6, 60], [-34, 4, 64], [-34, 14, 40]].forEach(([x, y, w]) => E('path', { d: `M${x} ${y}h${w}`, stroke: '#5A4636', 'stroke-width': 2 }, bill));
+    E('circle', { cx: 28, cy: 16, r: 8, fill: '#A8301C', stroke: '#6E1D10' }, bill); Sound.play('quill');
+    await step('Only the letter travels. A courier carries it over the Alps, and there is no gold for robbers to take.', 'Send the bill to Bruges');
+    const b0 = [F[0] - 90, F[1] - 40];
+    await tween(1800, (f) => { const p = along(f); const x = f < 0.06 ? lerp(b0[0], p[0], f / 0.06) : p[0], y = f < 0.06 ? lerp(b0[1], p[1], f / 0.06) : p[1]; bill.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(.6)`); }); Sound.play('seal');
+    tag(MAP.alps[3][0] + 20, MAP.alps[3][1] - 42, 'No gold crossed here', '#A8301C');
+    await step('Our partner in Bruges pays the supplier from the Flemish coins he holds for us there.', 'Pay the supplier in Bruges');
+    for (let i = 0; i < 5; i++) { const g = E('g', {}, fx); drawStack(g, 60, 'silver'); await tween(260, (f) => g.setAttribute('transform', `translate(${lerp(B[0] + 49, B[0] - 40 + (i - 2) * 14, f)} ${lerp(B[1] + 36, B[1] + 34, f)})`)); Sound.play('coin'); }
+    if (real) { const sim = C.simulate(gameChoices()); writeLedger(sim.states[1], sim.states[0]); }
+    say(real ? 'The gold never crossed the Alps. Nothing to rob, no guards to pay, and we keep all 40.' : 'The gold never crossed the Alps. That is why bankers wrote bills: only paper travels, so there is nothing to rob and no guards to pay.');
   }
   async function finishT1(Mp, instant) {
     const sim = C.simulate(gameChoices()), st = sim.states[1], c = st.ev.choice, fx = Mp.fx, road = Mp.road;
@@ -617,11 +659,7 @@
     visitor('friar', 'Fra Matteo', 'a Franciscan preacher', 'Usury is a sin. A known usurer is refused communion and Christian burial.');
     say('If we charge interest openly, we are usurers: no communion, no Christian burial, and Dante, a Florentine, put usurers on burning sand under a rain of fire in his <i>Inferno</i>. Our customers do not want to be seen with us either.');
     await choose([{ text: 'How do other banks get paid?', cls: 'go' }]);
-    // the worked instance: one bill, round trip, in numbers
-    const st0 = $('#stage'); st0.classList.remove('street'); st0.innerHTML = `<div class="howbill leaf" role="img" aria-label="How a bill of exchange pays: lend 100 florins in Florence, collected in Bruges in Flemish money, sent home on a second bill, about 104 come back.">
-      <h3>How a bill pays, without the word “interest”</h3>
-      <ol class="trip"><li><b>100 florins</b><span>lent to a merchant in Florence</span></li><li><b>Flemish money</b><span>he repays our partner in Bruges, at a rate set in our favor</span></li><li><b>about 104 florins</b><span>come home on a second bill, a few months later</span></li></ol>
-      <p>Keep the money travelling, and over the years the loans earn about a fifth. Every paper names only a rate of exchange, so the Church treats it as trading currencies.</p></div>`;
+    await roundTrip();
     say(M ? `We have ${flo(M)} lent to merchants. Choose how we get paid.` : 'We lent nothing to merchants, so this costs us nothing either way. It is how Florence’s bankers got paid when they did lend.');
     const est = (r) => (M ? `about ${fl(Math.round(M * r))}` : 'nothing to collect');
     const pick = await choose([
@@ -650,6 +688,36 @@
     const head = ev.vanished ? `Ser Guccio has left Florence, and the ${flo(ev.lostRisky)} went with him. ` : (lend.indexOf('alum') >= 0 && ev.earned > 0 ? 'Ser Guccio paid, half again what the others paid. ' : (lend.indexOf('alum') >= 0 ? 'Ser Guccio repaid his loan. ' : ''));
     say(note ? `${head}${note} We collect <b>${flo(ev.earned)}</b>.` : `${head}${C.consequence('t4', st, prev)}`);
     await nextButton(3);
+  }
+  // A real round trip of bills (Munro's example from the Datini archives, 1399 to 1400): lend in Bruges, collect in Barcelona's
+  // coin, buy a bill back at that day's rate, collect more than you lent. One tap per leg, the arithmetic shown small.
+  async function roundTrip() {
+    const BAR = geo(2.17, 41.39), B = MAP.bruges;
+    const route = [B, geo(2.35, 48.86), geo(4.83, 45.76), geo(3.88, 43.61), geo(2.9, 42.7), BAR];
+    const Mp = drawChart($('#stage'), null, { view: [130, 150, 900, 576], road: route, noRobbers: true, cities: [[BAR, 'Barcelona', 0, -22, 'middle']] });
+    const fx = Mp.fx, road = Mp.road, L = road.getTotalLength();
+    const at = (f) => { const q = road.getPointAtLength(f * L); return [q.x, q.y]; };
+    const sums = document.createElement('div'); sums.className = 'sums leaf'; sums.setAttribute('aria-label', 'The arithmetic'); $('#stage').appendChild(sums);
+    const line = (html) => { const p = document.createElement('p'); p.innerHTML = html; sums.appendChild(p); };
+    const step = async (text, button) => { say(text); await choose([{ text: button, cls: 'go' }]); clearChoices(); };
+    const coins = (p, n, kind) => { const g = E('g', {}, fx); for (let i = 0; i < n; i++) { const s = E('g', { transform: `translate(${p[0] - (n - 1) * 9 + i * 18} ${p[1]})` }, g); drawStack(s, 100, kind); } return g; };
+    const paper = E('g', { opacity: 0 }, fx); E('rect', { x: -30, y: -20, width: 60, height: 40, fill: '#F4EAD2', stroke: '#2A1C14', 'stroke-width': 2 }, paper); E('path', { d: 'M-22-8h44M-22 2h38M-22 12h26', stroke: '#5A4636', 'stroke-width': 2 }, paper); E('circle', { cx: 20, cy: 10, r: 6, fill: '#A8301C' }, paper);
+    const put = (p) => paper.setAttribute('transform', `translate(${p[0].toFixed(1)} ${p[1].toFixed(1)})`);
+    await step('This is how bankers were paid without charging interest. Here is a real one, from a merchant’s account books: in Bruges, in December 1399, Jacopo Goscio lends <b>600 écus</b> of Flemish money.', 'Lend 600 écus in Bruges');
+    let g1 = coins([B[0] + 40, B[1] + 50], 6, 'gold'); line('Lent in Bruges: <b>600 écus</b>'); Sound.play('coin');
+    await step('The borrower gives him a <b>bill on Barcelona</b>: there, the borrower’s partner must pay 10 shillings 5 pence of Barcelona money for every écu.', 'Send the bill to Barcelona');
+    paper.setAttribute('opacity', 1); g1.remove(); await tween(1600, (f) => put(at(f))); Sound.play('seal');
+    line('600 × 10s 5d = <b>6,250 shillings</b> of Barcelona');
+    await step('Goscio’s partner in Barcelona collects <b>6,250 shillings</b> in Barcelona’s own coin.', 'Collect in Barcelona');
+    const g2 = coins([BAR[0] + 110, BAR[1] + 18], 6, 'silver'); Sound.play('coin');
+    await step('He spends it on a <b>bill back to Bruges</b>, at that day’s rate in Barcelona: 10 shillings for every écu. Nobody knew that rate back in December.', 'Buy a bill home');
+    g2.remove(); await tween(1600, (f) => put(at(1 - f))); Sound.play('seal');
+    line('6,250 ÷ 10s = <b>625 écus</b>');
+    await step('In April 1400 the bill is paid in Bruges.', 'Collect in Bruges');
+    paper.setAttribute('opacity', 0); coins([B[0] + 40, B[1] + 50], 6, 'gold'); Sound.play('coin');
+    line('Gain: <b>25 écus</b>, about 4 for every 100, in four months');
+    say('625 écus for 600: the gain sits in the gap between 10s 5d going out and 10s 0d coming back. No paper says “interest”, so the Church treats it as trading money. The catch: had the rate in Barcelona moved the other way, he could have lost.');
+    await choose([{ text: 'Now choose how we get paid', cls: 'go' }]);
   }
   // the bet on the bill: what to ask for every 100 lent, before you know what rival benches ask this year
   async function billBet(prev) {
@@ -691,12 +759,12 @@
     const el = $('#stage'), r = el.getBoundingClientRect(), tall = phone(), W = tall ? 600 : 1000;
     const H = Math.round(Math.max(tall ? 600 : 480, Math.min(tall ? 1000 : 640, W * r.height / Math.max(1, r.width))));
     const street = Math.round(H * (tall ? 0.56 : 0.62)), cnt = H - street;
-    if (!tall) { const bh = cnt - 34; return { W, H, street, vault: { box: [24, street + 16, 600, bh], x0: 50, y0: street + 70, cols: 25, dx: 23, dy: 40, scale: 0.72 }, merch: { box: [640, street + 16, 160, bh] }, king: { box: [816, street + 16, 160, bh] }, front: [500] }; }
+    if (!tall) { const bh = cnt - 34; return { W, H, street, vault: { box: [24, street + 16, 600, bh], x0: 50, y0: street + 70, cols: 25, dx: 23, dy: 40, scale: 0.72 }, merch: { box: [640, street + 16, 160, bh] }, king: { box: [816, street + 16, 160, bh] }, front: [440] }; }
     const vh = Math.round(cnt * 0.6) - 20;
     return { W, H, street, vault: { box: [14, street + 14, 572, vh], x0: 40, y0: street + 66, cols: 18, dx: 30, dy: 40, scale: 0.8 }, merch: { box: [14, street + vh + 26, 280, cnt - vh - 40] }, king: { box: [306, street + vh + 26, 280, cnt - vh - 40] }, front: [300] };
   }
   function buildRun(st0) {
-    const mode = phone() ? 'tall' : 'wide', stg = $('#stage'); stg.classList.remove('street'); stg.classList.add('run'); stg.innerHTML = ''; const G = runGeo();
+    const mode = phone() ? 'tall' : 'wide', stg = $('#stage'); stg.classList.remove('street', 'chartstage'); stg.classList.add('run'); stg.innerHTML = ''; setClerk('over'); const G = runGeo();
     const svg = E('svg', { viewBox: `0 0 ${G.W} ${G.H}`, role: 'img', 'aria-label': 'The street in front of your bench, with depositors lining up, and your counter with the vault, your loans and the king’s bond.' }, stg);
     defs(svg);
     E('rect', { x: 0, y: 0, width: G.W, height: G.street, fill: '#2C3A63' }, svg);
@@ -739,7 +807,9 @@
     const feet0 = G.street - 12, s0 = STAGE.personScale;
     const spot = (j) => {
       if (j === 0) return [G.front[0], feet0, s0];
-      const press = Math.min(1, q.length / 12), k = j - 1, per = tall ? 3 : 5, side = k % 2 ? -1 : 1, idx = Math.floor(k / 2) % per, row = Math.floor(k / (2 * per));
+      // on a laptop the clerk speaks from the top right, so two in three of the crowd gather to the left
+      const press = Math.min(1, q.length / 12), k = j - 1, per = tall ? 3 : 5, side = tall ? (k % 2 ? -1 : 1) : (k % 3 === 0 ? 1 : -1);
+      const n = tall ? Math.floor(k / 2) : (side > 0 ? k / 3 : k - Math.floor(k / 3) - 1), idx = n % per, row = Math.floor(n / per);
       const sc = s0 * (1 - 0.13 * (row + 0.5) - 0.04 * press), gap = (tall ? 54 : 70) * sc / s0 * (1 - 0.18 * press);
       return [G.front[0] + side * gap * (idx + 1) + (row % 2 ? side * gap / 2 : 0), feet0 - 22 - row * 30 - (idx % 2) * 5, sc];
     };
@@ -748,7 +818,7 @@
     const race = () => { const v = total('vault'), o = owedInLine(); $('#race').innerHTML = `<span>Vault <b>${fl(v)}</b></span><span class="${o > v ? 'bad' : ''}">Asked for in line <b>${fl(o)}</b></span>`; };
     $('#stage').insertAdjacentHTML('afterbegin', '<p class="race" id="race" aria-live="off"></p>');
     function arrive() { if (arrived >= n) return; const i = arrived++; const side = i % 2 ? 1 : -1; const p = person(side > 0 ? STAGE.W + 50 : -50, feet0 - 40, i + 3, { hold: 'chit', scale: s0 * 0.8 }); q.push(p); relayout(); race(); if (arrived === n) setTimeout(() => { if (phase === 'run') say(`No one else is coming. ${q.length} still in line.`); }, 900); }
-    say('A rumor says King Edward will not pay his Florentine bankers. Our depositors fear their money went to him. Pay each one in coin: if the line sees gold, the panic may pass.');
+    say('Rumor says King Edward will not pay his Florentine bankers, and our depositors want their money. Pay each one in coin, and the panic may pass.');
     Sound.play('murmur');
     for (let i = 0; i < Math.min(2, n); i++) arrive();
     if (reduced()) while (arrived < n) arrive(); else timer = setInterval(() => { if (phase === 'run') { arrive(); if (q.length > 4) Sound.play('murmur'); } if (arrived >= n) clearInterval(timer); }, Y.pace || 780);
@@ -788,7 +858,7 @@
       phase = 'dry'; clearInterval(timer); while (arrived < n) arrive(); race();
       const left = total('vault'), M = prev.M;
       const agent = person(STAGE.W - 70, feet0 - 40, 2, { kind: 'hat', robe: '#3D7563', scale: s0 * 0.85 }); agent.turn(-1); depthSort();
-      say(M ? `${left ? `Only ${flo(left)} left` : 'The vault is empty'}, and ${q.length} still in line. Our loans are good, but merchants repay over months, not today. A rival bank will buy our loans now for <b>half what they are worth</b>: we lose half, but everyone is paid and we stay open. Or we close the bench.`
+      say(M ? `${left ? `Only ${flo(left)} left` : 'The vault is empty'}, ${q.length} still in line. Our loans are good, but merchants repay over months. A rival will buy them now for <b>half their worth</b>: we lose half, but everyone is paid. Or we close.`
         : `${left ? `Only ${flo(left)} left` : 'The vault is empty'}, and ${q.length} still in line. We have no loans to sell. We can close the bench, or bar the door and hope.`);
       Sound.play('murmur'); announce('The vault cannot pay the next depositor in full.');
       const list = []; if (M > 0) list.push({ text: 'Sell our loans at half price', sub: `${fl(M)} of loans`, cls: 'go', value: 'sell' });
